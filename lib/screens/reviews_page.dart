@@ -26,6 +26,7 @@ class Review {
   final String id;
   final String placeId;      // 어떤 여행지에 대한 리뷰인지 연결
   final String placeName;    // 여행지 이름 (표시용)
+  final String region;       // 지역 (서울, 경기, 강원 등)
   final int rating;
   final String content;
   final String author;
@@ -39,6 +40,7 @@ class Review {
     required this.id,
     required this.placeId,
     required this.placeName,
+    required this.region,
     required this.rating,
     required this.content,
     required this.author,
@@ -54,6 +56,7 @@ class Review {
     String? id,
     String? placeId,
     String? placeName,
+    String? region,
     int? rating,
     String? content,
     String? author,
@@ -67,6 +70,7 @@ class Review {
       id: id ?? this.id,
       placeId: placeId ?? this.placeId,
       placeName: placeName ?? this.placeName,
+      region: region ?? this.region,
       rating: rating ?? this.rating,
       content: content ?? this.content,
       author: author ?? this.author,
@@ -90,18 +94,31 @@ class _ReviewsPageState extends State<ReviewsPage> {
   // ImagePicker 인스턴스 (갤러리에서 이미지 선택 시 사용)
   final ImagePicker _picker = ImagePicker();
 
-  // TODO: 추후 백엔드 API에서 여행지 목록을 가져오도록 수정
-  // 선택 가능한 여행지 목록 (더미 데이터)
-  static final List<Place> _availablePlaces = [
-    Place(id: 'seoul', name: '서울'),
-    Place(id: 'busan', name: '부산'),
-    Place(id: 'jeju', name: '제주'),
-    Place(id: 'incheon', name: '인천'),
-    Place(id: 'gangneung', name: '강릉'),
+  // 선택 가능한 지역 목록
+  static const List<String> _availableRegions = [
+    '전체',
+    '서울',
+    '경기',
+    '강원',
+    '충북',
+    '충남',
+    '전북',
+    '전남',
+    '경북',
+    '경남',
+    '부산',
+    '대구',
+    '대전',
+    '울산',
+    '광주',
+    '제주',
   ];
 
-  // 현재 선택된 여행지 ID (null이면 전체 보기)
-  String? _selectedPlaceId;
+  // 현재 선택된 지역 (null이면 전체 보기)
+  String? _selectedRegion;
+
+  // 검색어 입력 컨트롤러
+  final TextEditingController _searchController = TextEditingController();
 
   // TODO: 추후 백엔드 API에서 리뷰 리스트를 가져오도록 수정
   // 리뷰 리스트를 상태로 관리
@@ -109,8 +126,9 @@ class _ReviewsPageState extends State<ReviewsPage> {
   List<Review> _reviews = [
     Review(
       id: '1',
-      placeId: 'seoul',
+      placeId: 'seoul1',
       placeName: '경복궁',
+      region: '서울',
       rating: 5,
       content: '한국의 역사를 느낄 수 있는 아름다운 곳입니다! 조선 왕조의 대표적인 궁궐로 정말 인상적이었어요.',
       author: 'Traveler123',
@@ -121,8 +139,9 @@ class _ReviewsPageState extends State<ReviewsPage> {
     ),
     Review(
       id: '2',
-      placeId: 'seoul',
+      placeId: 'seoul2',
       placeName: '명동 거리',
+      region: '서울',
       rating: 4,
       content: '쇼핑하기 좋지만 사람이 많아요. 다양한 브랜드와 맛집이 있어서 좋습니다.',
       author: 'KoreaLover',
@@ -133,8 +152,9 @@ class _ReviewsPageState extends State<ReviewsPage> {
     ),
     Review(
       id: '3',
-      placeId: 'seoul',
+      placeId: 'seoul3',
       placeName: '한강 공원',
+      region: '서울',
       rating: 5,
       content: '저녁에 산책하기 완벽한 장소입니다. 야경도 아름답고 분위기가 좋아요.',
       author: 'SeoulExplorer',
@@ -145,8 +165,9 @@ class _ReviewsPageState extends State<ReviewsPage> {
     ),
     Review(
       id: '4',
-      placeId: 'busan',
+      placeId: 'busan1',
       placeName: '해운대 해수욕장',
+      region: '부산',
       rating: 5,
       content: '부산의 대표 해변으로 정말 아름답습니다. 일몰이 특히 장관이에요!',
       author: 'BeachLover',
@@ -157,8 +178,9 @@ class _ReviewsPageState extends State<ReviewsPage> {
     ),
     Review(
       id: '5',
-      placeId: 'busan',
+      placeId: 'busan2',
       placeName: '자갈치 시장',
+      region: '부산',
       rating: 4,
       content: '신선한 해산물을 맛볼 수 있는 곳입니다. 활기찬 분위기가 좋아요.',
       author: 'Foodie',
@@ -169,8 +191,9 @@ class _ReviewsPageState extends State<ReviewsPage> {
     ),
     Review(
       id: '6',
-      placeId: 'jeju',
+      placeId: 'jeju1',
       placeName: '성산일출봉',
+      region: '제주',
       rating: 5,
       content: '유네스코 세계자연유산으로 정말 인상적입니다. 일출을 보러 가는 것을 추천해요!',
       author: 'NatureLover',
@@ -181,8 +204,9 @@ class _ReviewsPageState extends State<ReviewsPage> {
     ),
     Review(
       id: '7',
-      placeId: 'incheon',
+      placeId: 'incheon1',
       placeName: '인천 차이나타운',
+      region: '인천',
       rating: 4,
       content: '한국 최대 차이나타운으로 중국 음식과 문화를 경험할 수 있어요.',
       author: 'CultureExplorer',
@@ -193,8 +217,9 @@ class _ReviewsPageState extends State<ReviewsPage> {
     ),
     Review(
       id: '8',
-      placeId: 'gangneung',
+      placeId: 'gangneung1',
       placeName: '경포대 해수욕장',
+      region: '강원',
       rating: 5,
       content: '강릉의 대표 해변으로 깨끗하고 아름다운 곳입니다. 커피거리도 가까워서 좋아요.',
       author: 'CoastalTraveler',
@@ -203,39 +228,75 @@ class _ReviewsPageState extends State<ReviewsPage> {
       dislikeCount: 0,
       userVote: 0,
     ),
+    Review(
+      id: '9',
+      placeId: 'gangnam1',
+      placeName: '강남역',
+      region: '서울',
+      rating: 4,
+      content: '서울의 중심지로 쇼핑과 맛집이 많아요. 지하철 접근성도 좋습니다.',
+      author: 'CityExplorer',
+      createdAt: DateTime.now().subtract(const Duration(hours: 2)),
+      likeCount: 9,
+      dislikeCount: 0,
+      userVote: 0,
+    ),
+    Review(
+      id: '10',
+      placeId: 'hongdae1',
+      placeName: '홍대 거리',
+      region: '서울',
+      rating: 5,
+      content: '젊은 문화의 중심지! 클럽, 카페, 쇼핑몰이 많아서 하루 종일 즐길 수 있어요.',
+      author: 'YouthTraveler',
+      createdAt: DateTime.now().subtract(const Duration(hours: 1)),
+      likeCount: 14,
+      dislikeCount: 0,
+      userVote: 0,
+    ),
   ];
 
-  // 선택된 여행지에 따라 필터링된 리뷰 리스트
-  List<Review> get _filteredReviews {
-    if (_selectedPlaceId == null) {
-      return _reviews;
-    }
-    return _reviews.where((review) => review.placeId == _selectedPlaceId).toList();
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
-  // 선택된 여행지 이름 가져오기
-  String _getPlaceName(String? placeId) {
-    if (placeId == null) return '전체';
-    final place = _availablePlaces.firstWhere(
-      (p) => p.id == placeId,
-      orElse: () => Place(id: placeId, name: placeId),
-    );
-    return place.name;
+  // 선택된 지역과 검색어에 따라 필터링된 리뷰 리스트
+  List<Review> get _filteredReviews {
+    var filtered = _reviews;
+
+    // 지역 필터링
+    if (_selectedRegion != null && _selectedRegion != '전체') {
+      filtered = filtered.where((review) => review.region == _selectedRegion).toList();
+    }
+
+    // 검색어 필터링
+    final searchQuery = _searchController.text.trim().toLowerCase();
+    if (searchQuery.isNotEmpty) {
+      filtered = filtered.where((review) {
+        return review.placeName.toLowerCase().contains(searchQuery) ||
+            review.content.toLowerCase().contains(searchQuery);
+      }).toList();
+    }
+
+    return filtered;
   }
 
   @override
   Widget build(BuildContext context) {
+    // 전체 스크롤을 위해 SingleChildScrollView로 변경
     return Scaffold(
-      body: Column(
-        children: [
-          // 상단: 지도 영역 + 여행지 선택
-          _buildTopSection(),
-          
-          // 리뷰 목록
-          Expanded(
-            child: _buildReviewList(),
-          ),
-        ],
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            // 상단: 지도 영역 + 지역 선택 + 검색
+            _buildTopSection(),
+            
+            // 리뷰 목록
+            _buildReviewList(),
+          ],
+        ),
       ),
       // 오른쪽 아래 플로팅 액션 버튼
       floatingActionButton: FloatingActionButton(
@@ -246,117 +307,183 @@ class _ReviewsPageState extends State<ReviewsPage> {
     );
   }
 
-  // === 상단 섹션 (지도 영역 + 여행지 선택) ===
+  // === 상단 섹션 (지도 영역 + 검색) ===
   Widget _buildTopSection() {
     return Column(
       children: [
-        // 지도 영역 Placeholder
-        // TODO: 추후 실제 지도 위젯(GoogleMap 등)으로 교체
-        _buildMapPlaceholder(),
+        // 한국 지도 이미지
+        _buildKoreaMap(),
         
         const SizedBox(height: 16),
         
-        // 여행지 선택 칩 영역
-        _buildPlaceSelector(),
+        // 검색 입력 필드
+        _buildSearchBar(),
         
         const SizedBox(height: 8),
       ],
     );
   }
 
-  // === 지도 영역 Placeholder ===
-  // TODO: 추후 실제 지도 SDK(google_maps_flutter 등) 연동 시 이 부분을 GoogleMap 위젯으로 교체
-  Widget _buildMapPlaceholder() {
+  // === 한국 지도 이미지 (클릭 가능한 지역 버튼 포함) ===
+  Widget _buildKoreaMap() {
+    // 지도 영역 높이 확장 및 비율 유지로 이미지 잘림 방지
     return Container(
-      height: 230,
-      margin: const EdgeInsets.all(16.0),
+      height: 450,
+      margin: const EdgeInsets.symmetric(horizontal: 16.0),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.2),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
           width: 1,
         ),
       ),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Stack(
           children: [
-            Icon(
-              Icons.map,
-              size: 48,
-              color: Theme.of(context).colorScheme.primary.withOpacity(0.6),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              '지도 영역 - 나중에 실제 지도 연동 예정',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.grey[600],
+            // 리뷰 탭 상단 한국 지도 이미지
+            Image.asset(
+              'assets/images/koreamap.png',  // 한국 지도 이미지 경로
+              fit: BoxFit.contain,  // 비율 유지하여 이미지 잘림 방지
+              width: double.infinity,
+              height: double.infinity,
+              errorBuilder: (context, error, stackTrace) {
+                // 이미지가 없을 경우 placeholder 표시
+                return Container(
+                  color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.2),
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.map,
+                          size: 48,
+                          color: Theme.of(context).colorScheme.primary.withOpacity(0.6),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          '한국 지도',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: Colors.grey[600],
+                              ),
+                        ),
+                      ],
+                    ),
                   ),
-              textAlign: TextAlign.center,
+                );
+              },
             ),
-            const SizedBox(height: 4),
-            Text(
-              '(추후 Google Maps / Kakao Map 연동)',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Colors.grey[500],
-                    fontStyle: FontStyle.italic,
-                  ),
-            ),
+            // 클릭 가능한 지역 버튼들 (Overlay)
+            ..._buildRegionMarkers(),
           ],
         ),
       ),
     );
   }
 
-  // === 여행지 선택 칩 영역 ===
-  Widget _buildPlaceSelector() {
-    return SizedBox(
-      height: 50,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16.0),
-        children: [
-          // 전체 보기 칩
-          _buildPlaceChip(null, '전체 보기'),
-          const SizedBox(width: 8),
-          // 각 여행지 칩
-          ..._availablePlaces.map((place) {
-            return Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: _buildPlaceChip(place.id, place.name),
-            );
-          }),
-        ],
-      ),
-    );
+  // === 지도 위에 배치할 지역 마커 버튼들 ===
+  List<Widget> _buildRegionMarkers() {
+    // 각 지역의 상대적 위치 (지도 크기 기준 퍼센트)
+    final Map<String, Offset> regionPositions = {
+      '서울': const Offset(0.28, 0.18),
+      '경기': const Offset(0.33, 0.23),
+      '강원': const Offset(0.55, 0.18),
+      '충북': const Offset(0.46, 0.28),
+      '충남': const Offset(0.29, 0.34),
+      '대전': const Offset(0.34, 0.39),
+      '전북': const Offset(0.35, 0.50),
+      '전남': const Offset(0.30, 0.67),
+      '경북': const Offset(0.57, 0.39),
+      '대구': const Offset(0.58, 0.49),
+      '경남': const Offset(0.50, 0.56),
+      '부산': const Offset(0.67, 0.60),
+      '울산': const Offset(0.70, 0.54),
+      '광주': const Offset(0.29, 0.60),
+      '제주': const Offset(0.25, 0.92),
+    };
+
+    return regionPositions.entries.map((entry) {
+      final region = entry.key;
+      final position = entry.value;
+      final isSelected = _selectedRegion == region;
+
+      return Positioned(
+        left: position.dx * (MediaQuery.of(context).size.width - 32), // margin 고려
+        top: position.dy * 450, // 지도 높이에 맞춰 마커 위치 조정
+        child: GestureDetector(
+          onTap: () {
+            setState(() {
+              _selectedRegion = region;
+            });
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? Theme.of(context).colorScheme.primary
+                  : Colors.white.withOpacity(0.9),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isSelected
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                width: isSelected ? 2 : 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Text(
+              region,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                color: isSelected
+                    ? Colors.white
+                    : Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          ),
+        ),
+      );
+    }).toList();
   }
 
-  // === 여행지 선택 칩 ===
-  Widget _buildPlaceChip(String? placeId, String label) {
-    final isSelected = _selectedPlaceId == placeId;
-    
-    return FilterChip(
-      label: Text(label),
-      selected: isSelected,
-      onSelected: (selected) {
-        setState(() {
-          _selectedPlaceId = selected ? placeId : null;
-        });
-      },
-      selectedColor: Theme.of(context).colorScheme.primaryContainer,
-      checkmarkColor: Theme.of(context).colorScheme.primary,
-      labelStyle: TextStyle(
-        color: isSelected
-            ? Theme.of(context).colorScheme.primary
-            : Colors.grey[700],
-        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-      ),
-      side: BorderSide(
-        color: isSelected
-            ? Theme.of(context).colorScheme.primary
-            : Colors.grey[300]!,
-        width: isSelected ? 2 : 1,
+
+  // === 검색 입력 필드 ===
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      child: TextField(
+        controller: _searchController,
+        decoration: InputDecoration(
+          hintText: '장소명 또는 내용 검색 (예: 강남, 홍대, 해운대)',
+          prefixIcon: const Icon(Icons.search),
+          suffixIcon: _searchController.text.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.clear),
+                  onPressed: () {
+                    setState(() {
+                      _searchController.clear();
+                    });
+                  },
+                )
+              : null,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 12,
+          ),
+        ),
+        onChanged: (value) {
+          setState(() {});
+        },
       ),
     );
   }
@@ -366,20 +493,27 @@ class _ReviewsPageState extends State<ReviewsPage> {
     final filteredReviews = _filteredReviews;
 
     if (filteredReviews.isEmpty) {
-      return Center(
-        child: Text(
-          _selectedPlaceId == null
-              ? '아직 리뷰가 없습니다.\n첫 리뷰를 작성해보세요!'
-              : '${_getPlaceName(_selectedPlaceId)}에 대한 리뷰가 없습니다.',
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                color: Colors.grey,
-              ),
+      // 리뷰 리스트는 내부 스크롤을 끄고 shrinkWrap 사용
+      return SizedBox(
+        height: 200,
+        child: Center(
+          child: Text(
+            _selectedRegion == null && _searchController.text.isEmpty
+                ? '아직 리뷰가 없습니다.\n첫 리뷰를 작성해보세요!'
+                : '검색 결과가 없습니다.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: Colors.grey,
+                ),
+          ),
         ),
       );
     }
 
+    // 리뷰 리스트는 내부 스크롤을 끄고 shrinkWrap 사용
     return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       padding: const EdgeInsets.all(16.0),
       itemCount: filteredReviews.length,
       itemBuilder: (context, index) {
@@ -424,9 +558,9 @@ class _ReviewsPageState extends State<ReviewsPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // 도시 태그
+                          // 지역 태그
                           Text(
-                            '[${_getPlaceName(review.placeId)}] ${review.placeName}',
+                            '[${review.region}] ${review.placeName}',
                             style: Theme.of(context).textTheme.titleLarge?.copyWith(
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -665,9 +799,10 @@ class _ReviewsPageState extends State<ReviewsPage> {
   void _showAddReviewDialog() {
     // 입력값을 저장할 변수들
     final contentController = TextEditingController();
+    final placeNameController = TextEditingController();
     int selectedRating = 5; // 기본값 5점
     XFile? selectedImage; // 선택된 이미지 파일
-    String? selectedPlaceId = _selectedPlaceId; // 기본값은 현재 선택된 여행지
+    String? selectedRegion = _selectedRegion ?? '서울'; // 기본값은 현재 선택된 지역
 
     showModalBottomSheet(
       context: context,
@@ -705,26 +840,40 @@ class _ReviewsPageState extends State<ReviewsPage> {
                   ),
                   const SizedBox(height: 16),
                   
-                  // 여행지 선택 드롭다운
+                  // 지역 선택 드롭다운
                   DropdownButtonFormField<String>(
-                    value: selectedPlaceId,
+                    value: selectedRegion,
                     decoration: const InputDecoration(
-                      labelText: '여행지 선택',
-                      hintText: '여행지를 선택하세요',
+                      labelText: '지역 선택',
+                      hintText: '지역을 선택하세요',
                       border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.place),
+                      prefixIcon: Icon(Icons.location_on),
                     ),
-                    items: _availablePlaces.map((place) {
+                    items: _availableRegions.where((r) => r != '전체').map((region) {
                       return DropdownMenuItem<String>(
-                        value: place.id,
-                        child: Text(place.name),
+                        value: region,
+                        child: Text(region),
                       );
                     }).toList(),
                     onChanged: (String? value) {
                       setModalState(() {
-                        selectedPlaceId = value;
+                        if (value != null) {
+                          selectedRegion = value;
+                        }
                       });
                     },
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // 장소명 입력
+                  TextField(
+                    controller: placeNameController,
+                    decoration: const InputDecoration(
+                      labelText: '장소명',
+                      hintText: '예: 경복궁, 해운대 해수욕장, 강남역',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.place),
+                    ),
                   ),
                   const SizedBox(height: 16),
                   
@@ -836,10 +985,10 @@ class _ReviewsPageState extends State<ReviewsPage> {
                   ElevatedButton(
                     onPressed: () {
                       // 입력값 검증
-                      if (selectedPlaceId == null) {
+                      if (placeNameController.text.trim().isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text('여행지를 선택해주세요.'),
+                            content: Text('장소명을 입력해주세요.'),
                           ),
                         );
                         return;
@@ -854,24 +1003,20 @@ class _ReviewsPageState extends State<ReviewsPage> {
                         return;
                       }
 
-                      // 선택된 여행지 정보 가져오기
-                      final selectedPlace = _availablePlaces.firstWhere(
-                        (p) => p.id == selectedPlaceId,
-                      );
-
                       // setState를 호출하여 리뷰 리스트에 새 리뷰 추가
                       setState(() {
                         _reviews.insert(
                           0,
                           Review(
                             id: DateTime.now().millisecondsSinceEpoch.toString(),
-                            placeId: selectedPlaceId!,
-                            placeName: selectedPlace.name,
+                            placeId: '${selectedRegion ?? '전체'}_${DateTime.now().millisecondsSinceEpoch}',
+                            placeName: placeNameController.text.trim(),
+                            region: selectedRegion ?? '전체',  // null-safe 처리
                             rating: selectedRating,
                             content: contentController.text,
                             author: 'User${_reviews.length + 1}',
                             createdAt: DateTime.now(),
-                            image: selectedImage,
+                            image: selectedImage,  // XFile? 타입이므로 null-safe
                             likeCount: 0,
                             dislikeCount: 0,
                             userVote: 0,
