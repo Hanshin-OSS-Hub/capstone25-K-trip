@@ -1,0 +1,613 @@
+# capstone25-K-trip
+CREATE TABLE users (
+  id               BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  email            VARCHAR(320) DEFAULT NULL,
+  password_hash    VARCHAR(255) DEFAULT NULL,  
+  name             VARCHAR(100) DEFAULT NULL,
+  nickname         VARCHAR(50) DEFAULT NULL,
+  avatar_url       VARCHAR(512) DEFAULT NULL,
+  is_guest         BOOLEAN NOT NULL DEFAULT FALSE,
+email_verified_at  DATETIME NULL,
+deleted_at       DATETIME NULL,
+  created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP 
+                   ON UPDATE CURRENT_TIMESTAMP,
+
+PRIMARY KEY (id),	
+
+UNIQUE KEY uq_users_email (email),
+
+KEY idx_users_is_guest (is_guest),
+  KEY idx_users_created (created_at),
+KEY idx_users_deleted (deleted_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 
+COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE oauth_accounts (
+  id                   BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id              BIGINT UNSIGNED NOT NULL,
+  provider             ENUM('google','apple') NOT NULL,
+  provider_account_id  VARCHAR(191) NOT NULL,   
+  email                VARCHAR(320) NULL,     
+  access_token         TEXT NULL,
+  refresh_token        TEXT NULL,
+  token_expires_at     DATETIME NULL,
+
+  created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (id),
+  CONSTRAINT fk_oa_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  UNIQUE KEY uq_provider_account (provider, provider_account_id), 
+  KEY idx_oa_user (user_id),
+  KEY idx_oa_provider_email (provider, email)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+
+CREATE TABLE sessions (
+  id               BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id          BIGINT UNSIGNED NULL,      
+  session_token    CHAR(64) NOT NULL,         
+  user_agent       VARCHAR(255) NULL,
+  ip_address       VARBINARY(16) NULL,       
+  expires_at       DATETIME NOT NULL,        
+  revoked_at       DATETIME NULL,
+
+  created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_sessions_token (session_token),
+  KEY idx_sessions_user (user_id),
+  KEY idx_sessions_expires (expires_at),
+  CONSTRAINT fk_sessions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE verification_tokens (
+  id           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id      BIGINT UNSIGNED NOT NULL,
+  token_type   ENUM('email_verify','password_reset') NOT NULL,
+  token        CHAR(64) NOT NULL,      
+  expires_at   DATETIME NOT NULL,
+  used_at      DATETIME NULL,
+
+  created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_verif_token (token_type, token),
+  KEY idx_verif_user (user_id),
+  KEY idx_verif_expires (expires_at),
+  CONSTRAINT fk_verif_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE user_profiles (
+  user_id          BIGINT UNSIGNED NOT NULL,
+
+  bio              VARCHAR(300) DEFAULT NULL,
+
+  birth_date       DATE DEFAULT NULL,     
+  gender           ENUM('male', 'female', 'other') DEFAULT NULL,
+
+  country_code     VARCHAR(10) DEFAULT NULL,   
+  city             VARCHAR(100) DEFAULT NULL,  
+
+  created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                   ON UPDATE CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (user_id),
+  CONSTRAINT fk_user_profiles_user 
+      FOREIGN KEY (user_id) REFERENCES users(id)
+      ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 
+COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE user_settings (
+  id                BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id           BIGINT UNSIGNED NOT NULL,
+
+  language          ENUM('ko', 'en', 'ja', 'zh') NOT NULL DEFAULT 'en',
+  theme             ENUM('light', 'dark') NOT NULL DEFAULT 'light',
+  push_enabled      BOOLEAN NOT NULL DEFAULT TRUE,
+
+  created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    ON UPDATE CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_user_settings_user (user_id),
+
+  CONSTRAINT fk_user_settings_user
+      FOREIGN KEY (user_id) REFERENCES users(id)
+      ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 
+COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE survey_questions (
+  id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  question_key  VARCHAR(100) NOT NULL,   
+  question_type ENUM('single', 'multi', 'number', 'text') NOT NULL,
+  
+  question_ko   VARCHAR(255) NOT NULL,
+  question_en   VARCHAR(255) NOT NULL,
+  question_ja   VARCHAR(255),
+  question_zh   VARCHAR(255),
+
+  is_required   BOOLEAN NOT NULL DEFAULT TRUE,
+
+  created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_question_key (question_key)
+)ENGINE=InnoDB 
+  DEFAULT CHARSET=utf8mb4 
+  COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE survey_options (
+  id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  question_id   BIGINT UNSIGNED NOT NULL,
+  
+  option_key    VARCHAR(100) NOT NULL,   -- 내부 식별용
+  option_ko     VARCHAR(255) NOT NULL,
+  option_en     VARCHAR(255) NOT NULL,
+  option_ja     VARCHAR(255),
+  option_zh     VARCHAR(255),
+
+  sort_order    INT NOT NULL DEFAULT 0,
+
+  created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  
+  CONSTRAINT fk_option_question
+    FOREIGN KEY (question_id) REFERENCES survey_questions(id)
+      ON DELETE CASCADE,
+
+  UNIQUE KEY uq_option_unique (question_id, option_key)
+)ENGINE=InnoDB 
+  DEFAULT CHARSET=utf8mb4 
+  COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE survey_answers (
+  id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id       BIGINT UNSIGNED NOT NULL,
+  question_id   BIGINT UNSIGNED NOT NULL,
+  option_id     BIGINT UNSIGNED DEFAULT NULL,  
+  answer_text   VARCHAR(255) DEFAULT NULL,      
+  
+  created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+KEY idx_survey_answers_user (user_id),
+KEY idx_survey_answers_question (question_id),
+
+  CONSTRAINT fk_answer_user
+    FOREIGN KEY (user_id) REFERENCES users(id)
+      ON DELETE CASCADE,
+
+  CONSTRAINT fk_answer_question
+    FOREIGN KEY (question_id) REFERENCES survey_questions(id)
+      ON DELETE CASCADE,
+
+  CONSTRAINT fk_answer_option
+    FOREIGN KEY (option_id) REFERENCES survey_options(id)
+      ON DELETE SET NULL
+)ENGINE=InnoDB 
+  DEFAULT CHARSET=utf8mb4 
+  COLLATE=utf8mb4_0900_ai_ci;
+
+
+CREATE TABLE location_categories (
+    category_id INT PRIMARY KEY AUTO_INCREMENT,
+    category_name_ko VARCHAR(100) NOT NULL,
+    category_name_en VARCHAR(100) NOT NULL,
+    category_name_ja VARCHAR(100) DEFAULT NULL,
+    category_name_zh VARCHAR(100) DEFAULT NULL,
+    category_description_ko TEXT DEFAULT NULL,
+    category_description_en TEXT DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_category_en (category_name_en)
+)ENGINE=InnoDB
+  DEFAULT CHARSET=utf8mb4
+  COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE locations (
+    location_id INT PRIMARY KEY AUTO_INCREMENT,
+    -- 다국어 이름
+    name_ko VARCHAR(200) NOT NULL,
+    name_en VARCHAR(200) NOT NULL,
+    name_ja VARCHAR(200) DEFAULT NULL,
+    name_zh VARCHAR(200) DEFAULT NULL,
+    -- 주소 (다국어 가능)
+    address_ko VARCHAR(300) DEFAULT NULL,
+    address_en VARCHAR(300) DEFAULT NULL,
+    -- 국가/도시
+    country_code VARCHAR(10) NOT NULL,     -- KR, US, JP
+    city         VARCHAR(100) DEFAULT NULL,
+    -- 좌표
+    latitude     DECIMAL(10,7) NOT NULL,
+    longitude    DECIMAL(10,7) NOT NULL,
+    coordinates  POINT NOT NULL,
+    location_category_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    SPATIAL INDEX idx_coordinates (coordinates),
+    INDEX idx_locations_name_en (name_en),
+    INDEX idx_locations_city (city),
+    FOREIGN KEY (location_category_id)
+        REFERENCES location_categories(category_id)
+        ON DELETE RESTRICT
+) ENGINE=InnoDB 
+  DEFAULT CHARSET=utf8mb4 
+  COLLATE=utf8mb4_0900_ai_ci;
+
+
+CREATE TABLE location_tags (
+    tag_id INT PRIMARY KEY AUTO_INCREMENT,
+    tag_name VARCHAR(50) NOT NULL UNIQUE
+)
+ENGINE=InnoDB
+  DEFAULT CHARSET=utf8mb4
+  COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE location_tag_map (
+    location_id INT NOT NULL,
+    tag_id INT NOT NULL,
+    PRIMARY KEY (location_id, tag_id),
+    FOREIGN KEY (location_id) REFERENCES locations(location_id) ON DELETE CASCADE,
+    FOREIGN KEY (tag_id) REFERENCES location_tags(tag_id) ON DELETE CASCADE
+)
+ENGINE=InnoDB
+  DEFAULT CHARSET=utf8mb4
+  COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE location_hours (
+    hours_id INT PRIMARY KEY AUTO_INCREMENT,
+    location_id INT NOT NULL,
+    day_of_week ENUM('Mon','Tue','Wed','Thu','Fri','Sat','Sun') NOT NULL,
+    open_time TIME NULL,
+    close_time TIME NULL,
+    is_open BOOLEAN DEFAULT TRUE,
+    FOREIGN KEY (location_id) REFERENCES locations(location_id) ON DELETE CASCADE,
+    INDEX idx_hours_loc_day (location_id, day_of_week)
+)
+ENGINE=InnoDB
+  DEFAULT CHARSET=utf8mb4
+  COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE location_images (
+    image_id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    location_id INT NOT NULL,
+    image_url VARCHAR(500) NOT NULL,
+    is_primary BOOLEAN DEFAULT FALSE,
+    source ENUM('user','api','system') DEFAULT 'user',
+    uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (location_id) REFERENCES locations(location_id) ON DELETE CASCADE,
+    INDEX idx_location_images_loc (location_id)
+)
+ENGINE=InnoDB
+  DEFAULT CHARSET=utf8mb4
+  COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE location_api_sources (
+    source_id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    location_id INT NOT NULL,
+    source_name ENUM('google','naver','kto','tripadvisor') NOT NULL,
+    external_place_id VARCHAR(200),
+    rating DECIMAL(3,2) NULL 	,
+    review_count INT,
+    raw_json JSON NULL,
+    synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (location_id) REFERENCES locations(location_id) ON DELETE CASCADE,
+    INDEX idx_api_location (location_id),
+    INDEX idx_api_source (source_name)
+)
+ENGINE=InnoDB
+  DEFAULT CHARSET=utf8mb4
+  COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE reviews (
+    review_id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT UNSIGNED NULL,    
+    location_id INT NULL,            
+    review_title VARCHAR(200) NULL,
+    rating DECIMAL(2,1) NOT NULL,
+    review_comment TEXT,
+    visit_date DATE,
+    like_count INT DEFAULT 0,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (location_id) REFERENCES locations(location_id) ON DELETE SET NULL,
+    CONSTRAINT chk_rating CHECK (rating IN     
+      (1.0,1.5,2.0,2.5,3.0,3.5,4.0,4.5,5.0)
+    ),
+    INDEX idx_reviews_user (user_id),
+    INDEX idx_reviews_location (location_id),
+    INDEX idx_reviews_rating (rating),
+    INDEX idx_reviews_active (is_deleted, created_at)
+);
+
+
+
+CREATE TABLE review_media (
+    media_id INT PRIMARY KEY AUTO_INCREMENT,
+    review_id INT NULL,  
+    media_type ENUM('photo', 'video') NOT NULL,
+    media_url VARCHAR(255) NOT NULL,
+    media_thumbnail_url VARCHAR(255),
+    file_size_bytes BIGINT,
+    media_order INT DEFAULT 0,
+    uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+
+CONSTRAINT fk_review_media_review
+        FOREIGN KEY (review_id) REFERENCES reviews(review_id)
+        ON DELETE SET NULL,
+    INDEX idx_media_review (review_id),
+    INDEX idx_media_type (media_type)
+);
+
+CREATE TABLE review_likes (
+    like_id INT PRIMARY KEY AUTO_INCREMENT,
+    review_id INT NULL,
+    user_id BIGINT UNSIGNED NULL,
+    liked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+      FOREIGN KEY (review_id) REFERENCES reviews(review_id) ON DELETE SET NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE KEY unique_user_review_like (review_id, user_id),
+    INDEX idx_review_likes_review (review_id),
+    INDEX idx_review_likes_user (user_id)
+);
+
+CREATE VIEW reviews_with_stats AS
+SELECT 
+    r.review_id,
+    r.user_id,
+    r.location_id,
+    r.rating,
+    r.review_title,
+    r.review_comment,
+    r.visit_date,
+    r.created_at,
+    r.updated_at,
+
+COUNT(DISTINCT CASE WHEN rl.is_deleted = FALSE THEN rl.like_id END) AS total_likes,
+    COUNT(DISTINCT CASE WHEN rm.is_deleted = FALSE THEN rm.media_id END) AS total_media,
+    COUNT(DISTINCT CASE WHEN rm.is_deleted = FALSE AND rm.media_type = 'photo' THEN rm.media_id END) AS photo_count,
+    COUNT(DISTINCT CASE WHEN rm.is_deleted = FALSE AND rm.media_type = 'video' THEN rm.media_id END) AS video_count
+
+FROM reviews r
+LEFT JOIN review_likes rl ON r.review_id = rl.review_id 
+LEFT JOIN review_media rm ON r.review_id = rm.review_id
+
+WHERE r.is_deleted = FALSE
+GROUP BY r.review_id, r.user_id, r.location_id, r.rating, 
+         r.review_title, r.review_comment, r.visit_date, 
+         r.created_at, r.updated_at;
+
+CREATE TABLE review_translations (
+    translation_id INT PRIMARY KEY AUTO_INCREMENT,
+    review_id INT NULL,
+    language ENUM('ko', 'en', 'ja', 'zh') NOT NULL,
+    translated_title VARCHAR(200) DEFAULT NULL,
+    translated_comment TEXT DEFAULT NULL,
+    translated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    translation_engine VARCHAR(50) DEFAULT 'gpt', 
+    is_auto BOOLEAN DEFAULT TRUE,
+    FOREIGN KEY (review_id) REFERENCES reviews(review_id)
+        ON DELETE SET NULL,
+    UNIQUE KEY uq_review_language (review_id, language),
+    INDEX idx_trans_review (review_id),
+    INDEX idx_trans_lang (language)
+);
+
+CREATE TABLE trip_themes (
+    theme_id INT PRIMARY KEY AUTO_INCREMENT,
+    theme_name VARCHAR(50) NOT NULL UNIQUE,
+    theme_description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE route_preferences (
+    preference_id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT UNSIGNED NOT NULL,
+
+travelers_count SMALLINT UNSIGNED NOT NULL DEFAULT 1,
+    preferred_language VARCHAR(10) DEFAULT 'en',
+    transport_mode ENUM('walk', 'public', 'taxi', 'car') DEFAULT 'public',
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    theme_id INT NOT NULL,
+    schedule_type ENUM('relaxed', 'packed') NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (theme_id) REFERENCES trip_themes(theme_id)
+);
+
+CREATE TABLE recommended_routes (
+    route_id INT PRIMARY KEY AUTO_INCREMENT,
+    preference_id INT NOT NULL,
+    route_name VARCHAR(200) NOT NULL,
+    route_description TEXT,
+    total_estimated_cost DECIMAL(10, 2),
+    difficulty_level ENUM('easy', 'moderate', 'challenging'),
+    generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    is_active BOOLEAN DEFAULT TRUE,
+
+ai_model VARCHAR(100) NULL,
+    ai_version VARCHAR(50) NULL,
+    FOREIGN KEY (preference_id) REFERENCES route_preferences(preference_id) ON DELETE CASCADE
+);
+
+CREATE TABLE route_itinerary (
+    itinerary_id INT PRIMARY KEY AUTO_INCREMENT,
+    route_id INT NOT NULL,
+    day_number INT NOT NULL,
+    day_date DATE NOT NULL,
+    day_description TEXT,
+    FOREIGN KEY (route_id) REFERENCES recommended_routes(route_id) ON DELETE CASCADE,
+    UNIQUE KEY unique_route_day (route_id, day_number),
+    INDEX idx_itinerary_route_day (route_id, day_number)
+);
+
+CREATE TABLE activity_categories (
+    category_id INT PRIMARY KEY AUTO_INCREMENT,
+    category_name VARCHAR(50) NOT NULL UNIQUE,
+    category_icon VARCHAR(50),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE itinerary_activities (
+    activity_id INT PRIMARY KEY AUTO_INCREMENT,
+    itinerary_id INT NOT NULL,
+    activity_order INT NOT NULL,
+    activity_time TIME,
+    activity_name VARCHAR(200) NOT NULL,
+    activity_description TEXT,
+
+location_id INT NULL,
+
+location_name VARCHAR(200),
+    location_address TEXT,
+    coordinates POINT NOT NULL SRID 4326,
+    estimated_duration_minutes INT DEFAULT NULL,
+    estimated_cost DECIMAL(10, 2) DEFAULT NULL,
+    activity_category_id INT,
+    FOREIGN KEY (itinerary_id) REFERENCES route_itinerary(itinerary_id) ON DELETE CASCADE,
+    FOREIGN KEY (activity_category_id) REFERENCES activity_categories(category_id),
+    FOREIGN KEY (location_id) REFERENCES locations(location_id)
+        ON DELETE SET NULL,
+    SPATIAL INDEX idx_activity_coordinates (coordinates),
+    INDEX idx_itinerary_activities_itinerary (itinerary_id),
+    INDEX idx_itinerary_activities_location (location_id)
+);
+
+CREATE TABLE user_saved_routes (
+    saved_route_id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT UNSIGNED NOT NULL,
+    route_id INT NOT NULL,
+    saved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    trip_status ENUM('planned', 'ongoing', 'completed', 'cancelled') DEFAULT 'planned',
+    actual_start_date DATE,
+    actual_end_date DATE,
+    is_public BOOLEAN NOT NULL DEFAULT TRUE,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (route_id) REFERENCES recommended_routes(route_id),
+    UNIQUE KEY unique_user_route (user_id, route_id)
+);
+
+CREATE TABLE route_ratings (
+    rating_id INT PRIMARY KEY AUTO_INCREMENT,
+    saved_route_id INT NOT NULL,
+    user_id BIGINT UNSIGNED NOT NULL,
+    rating_type ENUM('thumbs_up', 'thumbs_down') NOT NULL,
+    feedback_text VARCHAR(1000),
+    rated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (saved_route_id) REFERENCES user_saved_routes(saved_route_id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_rating (saved_route_id, user_id)
+);
+
+CREATE INDEX idx_route_preferences_user ON route_preferences(user_id);
+CREATE INDEX idx_route_preferences_dates ON route_preferences(start_date, end_date);
+CREATE INDEX idx_recommended_routes_preference ON recommended_routes(preference_id);
+CREATE INDEX idx_route_itinerary_route ON route_itinerary(route_id);
+CREATE INDEX idx_user_saved_routes_user ON user_saved_routes(user_id);
+CREATE INDEX idx_user_saved_routes_status ON user_saved_routes(trip_status);
+CREATE INDEX idx_route_ratings_saved_route ON route_ratings(saved_route_id);
+CREATE INDEX idx_route_ratings_rating_type ON route_ratings(rating_type);
+CREATE INDEX idx_user_saved_routes_is_public ON user_saved_routes(is_public);
+
+CREATE TABLE board_regions (
+    region_id INT PRIMARY KEY AUTO_INCREMENT,
+    region_name_ko VARCHAR(100) NOT NULL,
+    region_name_en VARCHAR(100) NOT NULL,
+    region_name_ja VARCHAR(100),
+    region_name_zh VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE board_categories (
+    category_id INT PRIMARY KEY AUTO_INCREMENT,
+    category_key VARCHAR(50) NOT NULL UNIQUE,     
+    name_ko VARCHAR(100) NOT NULL,           
+    name_en VARCHAR(100) NOT NULL,            
+    name_ja VARCHAR(100) DEFAULT NULL,        
+    name_zh VARCHAR(100) DEFAULT NULL,        
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
+CREATE TABLE board_posts (
+    post_id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT UNSIGNED NOT NULL,
+    region_id INT NULL,
+    category_id INT NULL,
+    title VARCHAR(200) NOT NULL,
+    content TEXT NOT NULL,
+    is_deleted BOOLEAN DEFAULT FALSE,
+    is_public BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (region_id) REFERENCES board_regions(region_id) ON DELETE SET NULL,
+    FOREIGN KEY (category_id) REFERENCES board_categories(category_id) ON DELETE SET NULL,
+    INDEX idx_posts_user (user_id),
+    INDEX idx_posts_region (region_id),
+    INDEX idx_posts_category (category_id),
+    INDEX idx_posts_public (is_public)
+);
+
+CREATE TABLE board_post_translations (
+    translation_id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    post_id BIGINT UNSIGNED NOT NULL,
+    language ENUM('ko','en','ja','zh') NOT NULL,
+    translated_title VARCHAR(200),
+    translated_content TEXT,
+    translated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    translation_engine VARCHAR(50) DEFAULT 'gpt',
+    is_auto BOOLEAN DEFAULT TRUE,
+    FOREIGN KEY (post_id) REFERENCES board_posts(post_id) ON DELETE CASCADE,
+    UNIQUE KEY uq_post_language (post_id, language)
+);
+
+CREATE TABLE board_post_images (
+    image_id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    post_id BIGINT UNSIGNED NOT NULL,
+    image_url VARCHAR(500) NOT NULL,
+    is_primary BOOLEAN DEFAULT FALSE,
+    uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (post_id) REFERENCES board_posts(post_id) ON DELETE CASCADE,
+    INDEX idx_post_images_post (post_id)
+);
+
+CREATE TABLE board_comments (
+    comment_id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    post_id BIGINT UNSIGNED NOT NULL,
+    user_id BIGINT UNSIGNED NOT NULL,
+    parent_comment_id BIGINT UNSIGNED NULL,
+    content TEXT NOT NULL,
+    is_deleted BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (post_id) REFERENCES board_posts(post_id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_comment_id) REFERENCES board_comments(comment_id) ON DELETE SET NULL,
+    INDEX idx_comments_post (post_id),
+    INDEX idx_comments_user (user_id)
+);
+
+CREATE TABLE board_post_likes (
+    like_id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    post_id BIGINT UNSIGNED NOT NULL,
+    user_id BIGINT UNSIGNED NOT NULL,
+    liked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (post_id) REFERENCES board_posts(post_id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE KEY uq_post_like (post_id, user_id),
+    INDEX idx_post_likes_post (post_id)
+);
+
+
+
+
