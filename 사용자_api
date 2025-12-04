@@ -1,0 +1,713 @@
+from fastapi import FastAPI, HTTPException, Query, Header, Request
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field, EmailStr, validator
+from typing import Optional
+from datetime import datetime, timedelta, date
+import mysql.connector
+from mysql.connector import pooling, Error
+import os
+import logging
+import secrets
+import bcrypt  # 🔐 bcrypt 사용
+
+# ================== 로깅 설정 ==================
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger("user-api")
+
+# ================== FastAPI 앱 ==================
+app = FastAPI(title="User API", version="1.0.0")
+
+# CORS 설정 (프론트엔드 주소에 맞게 수정)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:8080",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ================== DB 설정 ==================
+DB_CONFIG = {
+    "host": os.getenv("DB_HOST", "localhost"),
+    "user": os.getenv("DB_USER", "root"),
+    "password": os.getenv("DB_PASSWORD", ""),
+    "database": os.getenv("DB_NAME", "ktrip"),
+    "charset": "utf8mb4",
+    "collation": "utf8mb4_unicode_ci",
+}
+
+try:
+    db_pool = pooling.MySQLConnectionPool(
+        pool_name="user_pool",
+        pool_size=10,
+        pool_reset_session=True,
+        **DB_CONFIG,
+    )
+    logger.info("User DB connection pool created successfully")
+except Error as e:
+    logger.error(f"Failed to create user connection pool: {str(e)}")
+    db_pool = None
+
+
+def get_db_connection():
+    try:
+        if db_pool:
+            conn = db_pool.get_connection()
+        else:
+            conn = mysql.connector.connect(**DB_CONFIG)
+        return conn
+    except Error as e:
+        logger.error(f"Database connection failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Database connection failed: {str(e)}")
+
+
+# ================== 유틸 함수 ==================
+def hash_password(password: str) -> str:
+    """
+    비밀번호 해시 (bcrypt 사용)
+    """
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password.encode("utf-8"), salt)
+    return hashed.decode("utf-8")
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    try:
+        return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
+    except ValueError:
+        # 저장된 해시 형식이 잘못된 경우 등
+        return False
+
+
+def generate_session_token() -> str:
+    # 64자리 랜덤 hex string
+    return secrets.token_hex(32)
+
+
+# ================== Pydantic 모델 ==================
+class UserRegister(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=6, max_length=100)
+    name: Optional[str] = Field(None, max_length=100)
+    nickname: Optional[str] = Field(None, max_length=50)
+
+    @validator("password")
+    def check_password_not_blank(cls, v):
+        if not v.strip():
+            raise ValueError("Password cannot be empty or whitespace only")
+        return v
+
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=6, max_length=100)
+
+
+class UserUpdate(BaseModel):
+    name: Optional[str] = Field(None, max_length=100)
+    nickname: Optional[str] = Field(None, max_length=50)
+    avatar_url: Optional[str] = Field(None, max_length=512)
+
+
+class UserResponse(BaseModel):
+    id: int
+    email: Optional[EmailStr]
+    name: Optional[str]
+    nickname: Optional[str]
+    avatar_url: Optional[str]
+    is_guest: bool
+    email_verified_at: Optional[datetime]
+    deleted_at: Optional[datetime]
+    created_at: datetime
+    updated_at: datetime
+
+
+class UserProfileUpdate(BaseModel):
+    bio: Optional[str] = Field(None, max_length=300)
+    birth_date: Optional[date] = None  # ⬅ 날짜만 저장
+    gender: Optional[str] = Field(
+        None, regex="^(male|female|other)$"
+    )
+    country_code: Optional[str] = Field(None, max_length=10)
+    city: Optional[str] = Field(None, max_length=100)
+
+
+class UserProfileResponse(BaseModel):
+    user_id: int
+    bio: Optional[str]
+    birth_date: Optional[date]
+    gender: Optional[str]
+    country_code: Optional[str]
+    city: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+
+
+class UserSettingsUpdate(BaseModel):
+    language: Optional[str] = Field(
+        None, regex="^(ko|en|ja|zh)$"
+    )
+    theme: Optional[str] = Field(
+        None, regex="^(light|dark)$"
+    )
+    push_enabled: Optional[bool] = None
+
+
+class UserSettingsResponse(BaseModel):
+    id: int
+    user_id: int
+    language: str
+    theme: str
+    push_enabled: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class LoginResponse(BaseModel):
+    user: UserResponse
+    session_token: str
+    expires_at: datetime
+
+
+# ================== 시작 시 확인 ==================
+@app.on_event("startup")
+async def startup_event():
+    logger.info("🚀 User API Server Starting...")
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SHOW TABLES LIKE 'users'")
+        if not cursor.fetchone():
+            logger.warning("⚠️ 'users' table not found!")
+        cursor.execute("SHOW TABLES LIKE 'sessions'")
+        if not cursor.fetchone():
+            logger.warning("⚠️ 'sessions' table not found!")
+        cursor.close()
+        conn.close()
+        logger.info("✓ User related tables checked")
+    except Exception as e:
+        logger.error(f"Startup check failed: {str(e)}")
+
+
+# ================== 헬스 체크 ==================
+@app.get("/user-api/health")
+def health_check():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1")
+        cursor.fetchone()
+        cursor.close()
+        conn.close()
+        return {"status": "healthy", "database": "connected"}
+    except Exception as e:
+        logger.error(f"Health check failed: {str(e)}")
+        return {"status": "unhealthy", "database": "disconnected", "error": str(e)}
+
+
+# ================== 사용자 관련 ENDPOINTS ==================
+
+# 1. 회원가입
+@app.post("/users/register", response_model=UserResponse, status_code=201)
+def register_user(data: UserRegister):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        # email 중복 확인
+        cursor.execute(
+            "SELECT id FROM users WHERE email = %s AND deleted_at IS NULL",
+            (data.email,),
+        )
+        if cursor.fetchone():
+            raise HTTPException(status_code=400, detail="Email already in use")
+
+        password_hash = hash_password(data.password)
+
+        insert_query = """
+        INSERT INTO users (email, password_hash, name, nickname, is_guest)
+        VALUES (%s, %s, %s, %s, FALSE)
+        """
+        cursor.execute(
+            insert_query,
+            (data.email, password_hash, data.name, data.nickname),
+        )
+        conn.commit()
+
+        user_id = cursor.lastrowid
+
+        # 기본 user_settings 생성 (없으면 생성하는 방식)
+        cursor.execute(
+            """
+            INSERT INTO user_settings (user_id)
+            VALUES (%s)
+            """,
+            (user_id,),
+        )
+        conn.commit()
+
+        # password_hash는 SELECT 하지 않음
+        cursor.execute(
+            """
+            SELECT id, email, name, nickname, avatar_url, is_guest,
+                   email_verified_at, deleted_at, created_at, updated_at
+            FROM users
+            WHERE id = %s
+            """,
+            (user_id,),
+        )
+        user = cursor.fetchone()
+        return UserResponse(**user)
+    except HTTPException:
+        raise
+    except Error as e:
+        conn.rollback()
+        logger.error(f"Failed to register user: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to register user")
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# 2. 로그인 + 세션 생성
+@app.post("/users/login", response_model=LoginResponse)
+def login_user(data: UserLogin, request: Request):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        # 로그인 시에는 password_hash 포함해서 조회
+        cursor.execute(
+            """
+            SELECT id, email, name, nickname, avatar_url, is_guest,
+                   email_verified_at, deleted_at, created_at, updated_at,
+                   password_hash
+            FROM users
+            WHERE email = %s AND deleted_at IS NULL
+            """,
+            (data.email,),
+        )
+        user = cursor.fetchone()
+
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+
+        if not user.get("password_hash"):
+            raise HTTPException(status_code=401, detail="Password login not available")
+
+        if not verify_password(data.password, user["password_hash"]):
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+
+        # 세션 생성
+        session_token = generate_session_token()
+        expires_at = datetime.utcnow() + timedelta(days=7)
+
+        user_agent = request.headers.get("user-agent", "unknown")
+        ip_address = request.client.host if request.client else None
+
+        cursor.execute(
+            """
+            INSERT INTO sessions (user_id, session_token, user_agent, ip_address, expires_at)
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            (user["id"], session_token, user_agent, ip_address, expires_at),
+        )
+        conn.commit()
+
+        # 응답에서는 password_hash 제거
+        user_response_data = {
+            "id": user["id"],
+            "email": user["email"],
+            "name": user["name"],
+            "nickname": user["nickname"],
+            "avatar_url": user["avatar_url"],
+            "is_guest": user["is_guest"],
+            "email_verified_at": user["email_verified_at"],
+            "deleted_at": user["deleted_at"],
+            "created_at": user["created_at"],
+            "updated_at": user["updated_at"],
+        }
+
+        return LoginResponse(
+            user=UserResponse(**user_response_data),
+            session_token=session_token,
+            expires_at=expires_at,
+        )
+    except HTTPException:
+        raise
+    except Error as e:
+        conn.rollback()
+        logger.error(f"Failed to login user: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to login user")
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# 3. 로그아웃 (세션 만료) - Bearer 토큰 방식
+@app.post("/users/logout")
+def logout_user(
+    authorization: str = Header(
+        ...,
+        description="Bearer <session_token>"
+    )
+):
+    # Authorization 헤더에서 토큰 추출
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=400, detail="Invalid Authorization header")
+
+    session_token = authorization.split(" ", 1)[1].strip()
+    if not session_token:
+        raise HTTPException(status_code=400, detail="Session token is missing")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            """
+            UPDATE sessions
+            SET revoked_at = NOW()
+            WHERE session_token = %s AND revoked_at IS NULL
+            """,
+            (session_token,),
+        )
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        conn.commit()
+        return {"message": "Logged out successfully"}
+    except HTTPException:
+        raise
+    except Error as e:
+        conn.rollback()
+        logger.error(f"Failed to logout: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to logout")
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# 4. 사용자 정보 조회
+@app.get("/users/{user_id}", response_model=UserResponse)
+def get_user(user_id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        cursor.execute(
+            """
+            SELECT id, email, name, nickname, avatar_url, is_guest,
+                   email_verified_at, deleted_at, created_at, updated_at
+            FROM users
+            WHERE id = %s AND deleted_at IS NULL
+            """,
+            (user_id,),
+        )
+        user = cursor.fetchone()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        return UserResponse(**user)
+    except HTTPException:
+        raise
+    except Error as e:
+        logger.error(f"Failed to get user {user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get user")
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# 5. 사용자 정보 수정
+@app.put("/users/{user_id}")
+def update_user(user_id: int, data: UserUpdate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "SELECT id FROM users WHERE id = %s AND deleted_at IS NULL",
+            (user_id,),
+        )
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="User not found")
+
+        fields = []
+        params = []
+
+        if data.name is not None:
+            fields.append("name = %s")
+            params.append(data.name)
+        if data.nickname is not None:
+            fields.append("nickname = %s")
+            params.append(data.nickname)
+        if data.avatar_url is not None:
+            fields.append("avatar_url = %s")
+            params.append(data.avatar_url)
+
+        if not fields:
+            raise HTTPException(status_code=400, detail="No fields to update")
+
+        query = f"""
+        UPDATE users
+        SET {', '.join(fields)}
+        WHERE id = %s
+        """
+        params.append(user_id)
+
+        cursor.execute(query, params)
+        conn.commit()
+
+        return {"message": "User updated successfully"}
+    except HTTPException:
+        raise
+    except Error as e:
+        conn.rollback()
+        logger.error(f"Failed to update user {user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update user")
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# 6. 사용자 삭제 (Soft delete)
+@app.delete("/users/{user_id}")
+def delete_user(user_id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "SELECT id FROM users WHERE id = %s AND deleted_at IS NULL",
+            (user_id,),
+        )
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="User not found")
+
+        cursor.execute(
+            "UPDATE users SET deleted_at = NOW() WHERE id = %s",
+            (user_id,),
+        )
+        conn.commit()
+
+        return {"message": "User deleted successfully"}
+    except HTTPException:
+        raise
+    except Error as e:
+        conn.rollback()
+        logger.error(f"Failed to delete user {user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete user")
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# ================== 프로필 관련 ==================
+
+@app.get("/users/{user_id}/profile", response_model=UserProfileResponse)
+def get_profile(user_id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        cursor.execute(
+            "SELECT * FROM user_profiles WHERE user_id = %s",
+            (user_id,),
+        )
+        profile = cursor.fetchone()
+        if not profile:
+            # 없으면 기본 레코드 생성
+            cursor.close()
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                INSERT INTO user_profiles (user_id)
+                VALUES (%s)
+                """,
+                (user_id,),
+            )
+            conn.commit()
+            cursor.execute(
+                "SELECT * FROM user_profiles WHERE user_id = %s",
+                (user_id,),
+            )
+            profile = cursor.fetchone()
+
+        return UserProfileResponse(**profile)
+    except Error as e:
+        logger.error(f"Failed to get profile for user {user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get profile")
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.put("/users/{user_id}/profile")
+def update_profile(user_id: int, data: UserProfileUpdate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "SELECT id FROM users WHERE id = %s AND deleted_at IS NULL",
+            (user_id,),
+        )
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # 프로필이 없으면 먼저 생성
+        cursor.execute(
+            "SELECT user_id FROM user_profiles WHERE user_id = %s",
+            (user_id,),
+        )
+        if not cursor.fetchone():
+            cursor.execute(
+                "INSERT INTO user_profiles (user_id) VALUES (%s)",
+                (user_id,),
+            )
+            conn.commit()
+
+        fields = []
+        params = []
+
+        if data.bio is not None:
+            fields.append("bio = %s")
+            params.append(data.bio)
+        if data.birth_date is not None:
+            fields.append("birth_date = %s")
+            params.append(data.birth_date)
+        if data.gender is not None:
+            fields.append("gender = %s")
+            params.append(data.gender)
+        if data.country_code is not None:
+            fields.append("country_code = %s")
+            params.append(data.country_code)
+        if data.city is not None:
+            fields.append("city = %s")
+            params.append(data.city)
+
+        if not fields:
+            raise HTTPException(status_code=400, detail="No fields to update")
+
+        query = f"""
+        UPDATE user_profiles
+        SET {', '.join(fields)}
+        WHERE user_id = %s
+        """
+        params.append(user_id)
+
+        cursor.execute(query, params)
+        conn.commit()
+
+        return {"message": "Profile updated successfully"}
+    except HTTPException:
+        raise
+    except Error as e:
+        conn.rollback()
+        logger.error(f"Failed to update profile for user {user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update profile")
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# ================== 설정 관련 ==================
+
+@app.get("/users/{user_id}/settings", response_model=UserSettingsResponse)
+def get_settings(user_id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        cursor.execute(
+            "SELECT * FROM user_settings WHERE user_id = %s",
+            (user_id,),
+        )
+        settings = cursor.fetchone()
+        if not settings:
+            raise HTTPException(status_code=404, detail="Settings not found")
+        return UserSettingsResponse(**settings)
+    except HTTPException:
+        raise
+    except Error as e:
+        logger.error(f"Failed to get settings for user {user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get settings")
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.put("/users/{user_id}/settings")
+def update_settings(user_id: int, data: UserSettingsUpdate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "SELECT id FROM users WHERE id = %s AND deleted_at IS NULL",
+            (user_id,),
+        )
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # settings 없으면 생성
+        cursor.execute(
+            "SELECT id FROM user_settings WHERE user_id = %s",
+            (user_id,),
+        )
+        if not cursor.fetchone():
+            cursor.execute(
+                "INSERT INTO user_settings (user_id) VALUES (%s)",
+                (user_id,),
+            )
+            conn.commit()
+
+        fields = []
+        params = []
+
+        if data.language is not None:
+            fields.append("language = %s")
+            params.append(data.language)
+        if data.theme is not None:
+            fields.append("theme = %s")
+            params.append(data.theme)
+        if data.push_enabled is not None:
+            fields.append("push_enabled = %s")
+            params.append(data.push_enabled)
+
+        if not fields:
+            raise HTTPException(status_code=400, detail="No fields to update")
+
+        query = f"""
+        UPDATE user_settings
+        SET {', '.join(fields)}
+        WHERE user_id = %s
+        """
+        params.append(user_id)
+
+        cursor.execute(query, params)
+        conn.commit()
+
+        return {"message": "Settings updated successfully"}
+    except HTTPException:
+        raise
+    except Error as e:
+        conn.rollback()
+        logger.error(f"Failed to update settings for user {user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update settings")
+    finally:
+        cursor.close()
+        conn.close()
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=8001)
