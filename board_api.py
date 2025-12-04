@@ -1,3 +1,5 @@
+from dotenv import load_dotenv
+load_dotenv()
 from fastapi import FastAPI, HTTPException, Depends, Query, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -33,12 +35,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Database Configuration - 실제 DB 정보로 수정
+# Database Configuration
 DB_CONFIG = {
-    'host': os.getenv('DB_HOST', 'localhost'),
-    'user': os.getenv('DB_USER', 'root'),
-    'password': os.getenv('DB_PASSWORD', ''),  # 실제 비밀번호 입력
-    'database': os.getenv('DB_NAME', 'your_database'),  # 실제 DB 이름 입력
+    'host': os.getenv('DB_HOST'),
+    'user': os.getenv('DB_USER'),
+    'password': os.getenv('DB_PASSWORD'),
+    'database': os.getenv('DB_NAME'),
     'charset': 'utf8mb4',
     'collation': 'utf8mb4_unicode_ci'
 }
@@ -940,4 +942,5 @@ def get_categories(language: Language = Language.ko):
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)
