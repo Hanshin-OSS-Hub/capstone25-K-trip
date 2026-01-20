@@ -1,7 +1,6 @@
 // 이 파일은 K-Trip 앱의 진입점입니다.
 // MaterialApp을 설정하고, 상단 카테고리 메뉴를 탭 네비게이션으로 사용하는 메인 화면을 표시합니다.
 // 4개의 카테고리(AI 일정 추천, 지도, 리뷰, 게시판)를 관리하는 StatefulWidget입니다.
-// 0206-01-12 확인용
 
 
 import 'package:flutter/material.dart';
@@ -102,7 +101,10 @@ class _MainScreenState extends State<MainScreen> {
           ),
           // 선택된 카테고리의 페이지 내용
           Expanded(
-            child: _pages[_currentIndex],
+            child: IndexedStack(
+              index: _currentIndex,
+              children: _pages,
+            ),
           ),
         ],
       ),

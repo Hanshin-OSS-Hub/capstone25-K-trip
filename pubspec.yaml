@@ -23,6 +23,10 @@ dependencies:
   # 갤러리에서 이미지 선택을 위한 패키지
   image_picker: ^1.0.7
 
+  # 🔥 API 통신용 (추가)
+  http: ^1.2.2
+
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

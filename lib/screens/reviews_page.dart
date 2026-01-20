@@ -7,6 +7,8 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
+import '../api/review_api.dart';
+
 
 // === 여행지 데이터 모델 ===
 // TODO: 추후 백엔드 API에서 받아온 데이터로 교체
@@ -93,6 +95,10 @@ class ReviewsPage extends StatefulWidget {
 class _ReviewsPageState extends State<ReviewsPage> {
   // ImagePicker 인스턴스 (갤러리에서 이미지 선택 시 사용)
   final ImagePicker _picker = ImagePicker();
+  static const int _currentUserId = 1;
+  static const int _defaultLocationId = 1;
+  bool _isLoading = false;
+  String? _loadError;
 
   // 선택 가능한 지역 목록
   static const List<String> _availableRegions = [
@@ -122,144 +128,222 @@ class _ReviewsPageState extends State<ReviewsPage> {
 
   // TODO: 추후 백엔드 API에서 리뷰 리스트를 가져오도록 수정
   // 리뷰 리스트를 상태로 관리
-  // 초기에는 더미 데이터를 포함
+  // 더미데이터 주석상태
   List<Review> _reviews = [
-    Review(
-      id: '1',
-      placeId: 'seoul1',
-      placeName: '경복궁',
-      region: '서울',
-      rating: 5,
-      content: '한국의 역사를 느낄 수 있는 아름다운 곳입니다! 조선 왕조의 대표적인 궁궐로 정말 인상적이었어요.',
-      author: 'Traveler123',
-      createdAt: DateTime.now().subtract(const Duration(days: 3)),
-      likeCount: 12,
-      dislikeCount: 1,
-      userVote: 0,
-    ),
-    Review(
-      id: '2',
-      placeId: 'seoul2',
-      placeName: '명동 거리',
-      region: '서울',
-      rating: 4,
-      content: '쇼핑하기 좋지만 사람이 많아요. 다양한 브랜드와 맛집이 있어서 좋습니다.',
-      author: 'KoreaLover',
-      createdAt: DateTime.now().subtract(const Duration(days: 2)),
-      likeCount: 8,
-      dislikeCount: 2,
-      userVote: 0,
-    ),
-    Review(
-      id: '3',
-      placeId: 'seoul3',
-      placeName: '한강 공원',
-      region: '서울',
-      rating: 5,
-      content: '저녁에 산책하기 완벽한 장소입니다. 야경도 아름답고 분위기가 좋아요.',
-      author: 'SeoulExplorer',
-      createdAt: DateTime.now().subtract(const Duration(days: 1)),
-      likeCount: 15,
-      dislikeCount: 0,
-      userVote: 0,
-    ),
-    Review(
-      id: '4',
-      placeId: 'busan1',
-      placeName: '해운대 해수욕장',
-      region: '부산',
-      rating: 5,
-      content: '부산의 대표 해변으로 정말 아름답습니다. 일몰이 특히 장관이에요!',
-      author: 'BeachLover',
-      createdAt: DateTime.now().subtract(const Duration(hours: 12)),
-      likeCount: 20,
-      dislikeCount: 1,
-      userVote: 0,
-    ),
-    Review(
-      id: '5',
-      placeId: 'busan2',
-      placeName: '자갈치 시장',
-      region: '부산',
-      rating: 4,
-      content: '신선한 해산물을 맛볼 수 있는 곳입니다. 활기찬 분위기가 좋아요.',
-      author: 'Foodie',
-      createdAt: DateTime.now().subtract(const Duration(hours: 6)),
-      likeCount: 10,
-      dislikeCount: 0,
-      userVote: 0,
-    ),
-    Review(
-      id: '6',
-      placeId: 'jeju1',
-      placeName: '성산일출봉',
-      region: '제주',
-      rating: 5,
-      content: '유네스코 세계자연유산으로 정말 인상적입니다. 일출을 보러 가는 것을 추천해요!',
-      author: 'NatureLover',
-      createdAt: DateTime.now().subtract(const Duration(hours: 18)),
-      likeCount: 25,
-      dislikeCount: 0,
-      userVote: 0,
-    ),
-    Review(
-      id: '7',
-      placeId: 'incheon1',
-      placeName: '인천 차이나타운',
-      region: '인천',
-      rating: 4,
-      content: '한국 최대 차이나타운으로 중국 음식과 문화를 경험할 수 있어요.',
-      author: 'CultureExplorer',
-      createdAt: DateTime.now().subtract(const Duration(hours: 8)),
-      likeCount: 7,
-      dislikeCount: 1,
-      userVote: 0,
-    ),
-    Review(
-      id: '8',
-      placeId: 'gangneung1',
-      placeName: '경포대 해수욕장',
-      region: '강원',
-      rating: 5,
-      content: '강릉의 대표 해변으로 깨끗하고 아름다운 곳입니다. 커피거리도 가까워서 좋아요.',
-      author: 'CoastalTraveler',
-      createdAt: DateTime.now().subtract(const Duration(hours: 4)),
-      likeCount: 18,
-      dislikeCount: 0,
-      userVote: 0,
-    ),
-    Review(
-      id: '9',
-      placeId: 'gangnam1',
-      placeName: '강남역',
-      region: '서울',
-      rating: 4,
-      content: '서울의 중심지로 쇼핑과 맛집이 많아요. 지하철 접근성도 좋습니다.',
-      author: 'CityExplorer',
-      createdAt: DateTime.now().subtract(const Duration(hours: 2)),
-      likeCount: 9,
-      dislikeCount: 0,
-      userVote: 0,
-    ),
-    Review(
-      id: '10',
-      placeId: 'hongdae1',
-      placeName: '홍대 거리',
-      region: '서울',
-      rating: 5,
-      content: '젊은 문화의 중심지! 클럽, 카페, 쇼핑몰이 많아서 하루 종일 즐길 수 있어요.',
-      author: 'YouthTraveler',
-      createdAt: DateTime.now().subtract(const Duration(hours: 1)),
-      likeCount: 14,
-      dislikeCount: 0,
-      userVote: 0,
-    ),
+    // Review(
+    //   id: '1',
+    //   placeId: 'seoul1',
+    //   placeName: '경복궁',
+    //   region: '서울',
+    //   rating: 5,
+    //   content: '한국의 역사를 느낄 수 있는 아름다운 곳입니다! 조선 왕조의 대표적인 궁궐로 정말 인상적이었어요.',
+    //   author: 'Traveler123',
+    //   createdAt: DateTime.now().subtract(const Duration(days: 3)),
+    //   likeCount: 12,
+    //   dislikeCount: 1,
+    //   userVote: 0,
+    // ),
+    // Review(
+    //   id: '2',
+    //   placeId: 'seoul2',
+    //   placeName: '명동 거리',
+    //   region: '서울',
+    //   rating: 4,
+    //   content: '쇼핑하기 좋지만 사람이 많아요. 다양한 브랜드와 맛집이 있어서 좋습니다.',
+    //   author: 'KoreaLover',
+    //   createdAt: DateTime.now().subtract(const Duration(days: 2)),
+    //   likeCount: 8,
+    //   dislikeCount: 2,
+    //   userVote: 0,
+    // ),
+    // Review(
+    //   id: '3',
+    //   placeId: 'seoul3',
+    //   placeName: '한강 공원',
+    //   region: '서울',
+    //   rating: 5,
+    //   content: '저녁에 산책하기 완벽한 장소입니다. 야경도 아름답고 분위기가 좋아요.',
+    //   author: 'SeoulExplorer',
+    //   createdAt: DateTime.now().subtract(const Duration(days: 1)),
+    //   likeCount: 15,
+    //   dislikeCount: 0,
+    //   userVote: 0,
+    // ),
+    // Review(
+    //   id: '4',
+    //   placeId: 'busan1',
+    //   placeName: '해운대 해수욕장',
+    //   region: '부산',
+    //   rating: 5,
+    //   content: '부산의 대표 해변으로 정말 아름답습니다. 일몰이 특히 장관이에요!',
+    //   author: 'BeachLover',
+    //   createdAt: DateTime.now().subtract(const Duration(hours: 12)),
+    //   likeCount: 20,
+    //   dislikeCount: 1,
+    //   userVote: 0,
+    // ),
+    // Review(
+    //   id: '5',
+    //   placeId: 'busan2',
+    //   placeName: '자갈치 시장',
+    //   region: '부산',
+    //   rating: 4,
+    //   content: '신선한 해산물을 맛볼 수 있는 곳입니다. 활기찬 분위기가 좋아요.',
+    //   author: 'Foodie',
+    //   createdAt: DateTime.now().subtract(const Duration(hours: 6)),
+    //   likeCount: 10,
+    //   dislikeCount: 0,
+    //   userVote: 0,
+    // ),
+    // Review(
+    //   id: '6',
+    //   placeId: 'jeju1',
+    //   placeName: '성산일출봉',
+    //   region: '제주',
+    //   rating: 5,
+    //   content: '유네스코 세계자연유산으로 정말 인상적입니다. 일출을 보러 가는 것을 추천해요!',
+    //   author: 'NatureLover',
+    //   createdAt: DateTime.now().subtract(const Duration(hours: 18)),
+    //   likeCount: 25,
+    //   dislikeCount: 0,
+    //   userVote: 0,
+    // ),
+    // Review(
+    //   id: '7',
+    //   placeId: 'incheon1',
+    //   placeName: '인천 차이나타운',
+    //   region: '인천',
+    //   rating: 4,
+    //   content: '한국 최대 차이나타운으로 중국 음식과 문화를 경험할 수 있어요.',
+    //   author: 'CultureExplorer',
+    //   createdAt: DateTime.now().subtract(const Duration(hours: 8)),
+    //   likeCount: 7,
+    //   dislikeCount: 1,
+    //   userVote: 0,
+    // ),
+    // Review(
+    //   id: '8',
+    //   placeId: 'gangneung1',
+    //   placeName: '경포대 해수욕장',
+    //   region: '강원',
+    //   rating: 5,
+    //   content: '강릉의 대표 해변으로 깨끗하고 아름다운 곳입니다. 커피거리도 가까워서 좋아요.',
+    //   author: 'CoastalTraveler',
+    //   createdAt: DateTime.now().subtract(const Duration(hours: 4)),
+    //   likeCount: 18,
+    //   dislikeCount: 0,
+    //   userVote: 0,
+    // ),
+    // Review(
+    //   id: '9',
+    //   placeId: 'gangnam1',
+    //   placeName: '강남역',
+    //   region: '서울',
+    //   rating: 4,
+    //   content: '서울의 중심지로 쇼핑과 맛집이 많아요. 지하철 접근성도 좋습니다.',
+    //   author: 'CityExplorer',
+    //   createdAt: DateTime.now().subtract(const Duration(hours: 2)),
+    //   likeCount: 9,
+    //   dislikeCount: 0,
+    //   userVote: 0,
+    // ),
+    // Review(
+    //   id: '10',
+    //   placeId: 'hongdae1',
+    //   placeName: '홍대 거리',
+    //   region: '서울',
+    //   rating: 5,
+    //   content: '젊은 문화의 중심지! 클럽, 카페, 쇼핑몰이 많아서 하루 종일 즐길 수 있어요.',
+    //   author: 'YouthTraveler',
+    //   createdAt: DateTime.now().subtract(const Duration(hours: 1)),
+    //   likeCount: 14,
+    //   dislikeCount: 0,
+    //   userVote: 0,
+    // ),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadReviewsFromApi();
+  }
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadReviewsFromApi() async {
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
+
+    try {
+      final rawReviews = await ReviewApi.getReviewsByUser(_currentUserId);
+      final parsed = rawReviews
+          .whereType<Map>()
+          .map((item) => _reviewFromApi(Map<String, dynamic>.from(item)))
+          .toList();
+
+      setState(() {
+        _reviews = parsed;
+      });
+    } catch (e) {
+      setState(() {
+        _loadError = e.toString();
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Review _reviewFromApi(Map<String, dynamic> data) {
+    String readString(List<String> keys, {String fallback = ''}) {
+      for (final key in keys) {
+        final value = data[key];
+        if (value is String && value.trim().isNotEmpty) {
+          return value;
+        }
+      }
+      return fallback;
+    }
+
+    int readInt(List<String> keys, {int fallback = 0}) {
+      for (final key in keys) {
+        final value = data[key];
+        if (value is int) return value;
+        if (value is String) {
+          final parsed = int.tryParse(value);
+          if (parsed != null) return parsed;
+        }
+      }
+      return fallback;
+    }
+
+    final createdAtRaw = readString(['created_at', 'createdAt'], fallback: '');
+    final parsedDate = DateTime.tryParse(createdAtRaw) ?? DateTime.now();
+    final userId = readInt(['user_id', 'userId'], fallback: 0);
+
+    return Review(
+      id: readString(['review_id', 'id'], fallback: DateTime.now().millisecondsSinceEpoch.toString()),
+      placeId: readString(['location_id', 'place_id', 'placeId'], fallback: 'unknown'),
+      placeName: readString(['review_title', 'place_name', 'placeName', 'spot_name'], fallback: '리뷰'),
+      region: readString(['region', 'area'], fallback: '전체'),
+      rating: readInt(['rating', 'score'], fallback: 5),
+      content: readString(['review_comment', 'content', 'review'], fallback: ''),
+      author: userId > 0 ? 'User$userId' : readString(['author', 'user_name', 'nickname'], fallback: 'Unknown'),
+      createdAt: parsedDate,
+      likeCount: readInt(['total_likes', 'like_count', 'likes'], fallback: 0),
+      dislikeCount: readInt(['dislike_count', 'dislikes'], fallback: 0),
+      userVote: readInt(['user_vote', 'userVote', 'vote'], fallback: 0),
+      image: null,
+    );
   }
 
   // 선택된 지역과 검색어에 따라 필터링된 리뷰 리스트
@@ -290,12 +374,39 @@ class _ReviewsPageState extends State<ReviewsPage> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // 상단: 지도 영역 + 지역 선택 + 검색
             _buildTopSection(),
-            
-            // 리뷰 목록
-            _buildReviewList(),
+
+            // ⭐ 리뷰 API 연결 테스트 버튼 (임시)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: ElevatedButton(
+                onPressed: () async {
+                  await _loadReviewsFromApi();
+                },
+                child: const Text("리뷰 API 테스트"),
+              ),
+            ),
+
+            if (_isLoading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24.0),
+                child: CircularProgressIndicator(),
+              )
+            else if (_loadError != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+                child: Text(
+                  '리뷰를 불러오지 못했습니다.\n$_loadError',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Colors.redAccent,
+                      ),
+                ),
+              )
+            else
+              _buildReviewList(),
           ],
+
         ),
       ),
       // 오른쪽 아래 플로팅 액션 버튼
@@ -716,67 +827,95 @@ class _ReviewsPageState extends State<ReviewsPage> {
   }
 
   // === 추천 버튼 토글 처리 ===
-  void _toggleLike(int reviewIndex) {
+  Future<void> _toggleLike(int reviewIndex) async {
+    final review = _reviews[reviewIndex];
+    final previous = review;
+    int newLikeCount = review.likeCount;
+    int newDislikeCount = review.dislikeCount;
+    int newUserVote = review.userVote;
+
+    if (review.userVote == 0) {
+      // 아무것도 선택하지 않은 상태에서 추천 클릭
+      newLikeCount = review.likeCount + 1;
+      newUserVote = 1;
+    } else if (review.userVote == 1) {
+      // 이미 추천을 눌러 둔 상태에서 추천 재클릭 (해제)
+      newLikeCount = (review.likeCount - 1).clamp(0, double.infinity).toInt();
+      newUserVote = 0;
+    } else if (review.userVote == -1) {
+      // 비추천이 선택된 상태에서 추천 클릭 (전환)
+      newDislikeCount = (review.dislikeCount - 1).clamp(0, double.infinity).toInt();
+      newLikeCount = review.likeCount + 1;
+      newUserVote = 1;
+    }
+
     setState(() {
-      final review = _reviews[reviewIndex];
-      int newLikeCount = review.likeCount;
-      int newDislikeCount = review.dislikeCount;
-      int newUserVote = review.userVote;
-
-      if (review.userVote == 0) {
-        // 아무것도 선택하지 않은 상태에서 추천 클릭
-        newLikeCount = review.likeCount + 1;
-        newUserVote = 1;
-      } else if (review.userVote == 1) {
-        // 이미 추천을 눌러 둔 상태에서 추천 재클릭 (해제)
-        newLikeCount = (review.likeCount - 1).clamp(0, double.infinity).toInt();
-        newUserVote = 0;
-      } else if (review.userVote == -1) {
-        // 비추천이 선택된 상태에서 추천 클릭 (전환)
-        newDislikeCount = (review.dislikeCount - 1).clamp(0, double.infinity).toInt();
-        newLikeCount = review.likeCount + 1;
-        newUserVote = 1;
-      }
-
-      // 리뷰 상태 업데이트
       _reviews[reviewIndex] = review.copyWith(
         likeCount: newLikeCount,
         dislikeCount: newDislikeCount,
         userVote: newUserVote,
       );
     });
+
+    try {
+      final reviewId = int.tryParse(review.id);
+      if (reviewId == null) {
+        throw Exception('리뷰 ID 형식이 올바르지 않습니다.');
+      }
+
+      if (newUserVote == 1) {
+        await ReviewApi.likeReview(reviewId: reviewId, userId: _currentUserId);
+      } else if (newUserVote == 0 && previous.userVote == 1) {
+        await ReviewApi.unlikeReview(reviewId: reviewId, userId: _currentUserId);
+      }
+    } catch (e) {
+      setState(() {
+        _reviews[reviewIndex] = previous;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('추천 상태 저장 실패: $e')),
+        );
+      }
+    }
   }
 
   // === 비추천 버튼 토글 처리 ===
-  void _toggleDislike(int reviewIndex) {
+  Future<void> _toggleDislike(int reviewIndex) async {
+    final review = _reviews[reviewIndex];
+    final previous = review;
+    int newLikeCount = review.likeCount;
+    int newDislikeCount = review.dislikeCount;
+    int newUserVote = review.userVote;
+
+    if (review.userVote == 0) {
+      // 아무것도 선택하지 않은 상태에서 비추천 클릭
+      newDislikeCount = review.dislikeCount + 1;
+      newUserVote = -1;
+    } else if (review.userVote == -1) {
+      // 이미 비추천을 눌러 둔 상태에서 비추천 재클릭 (해제)
+      newDislikeCount = (review.dislikeCount - 1).clamp(0, double.infinity).toInt();
+      newUserVote = 0;
+    } else if (review.userVote == 1) {
+      // 추천이 선택된 상태에서 비추천 클릭 (전환)
+      newLikeCount = (review.likeCount - 1).clamp(0, double.infinity).toInt();
+      newDislikeCount = review.dislikeCount + 1;
+      newUserVote = -1;
+    }
+
     setState(() {
-      final review = _reviews[reviewIndex];
-      int newLikeCount = review.likeCount;
-      int newDislikeCount = review.dislikeCount;
-      int newUserVote = review.userVote;
-
-      if (review.userVote == 0) {
-        // 아무것도 선택하지 않은 상태에서 비추천 클릭
-        newDislikeCount = review.dislikeCount + 1;
-        newUserVote = -1;
-      } else if (review.userVote == -1) {
-        // 이미 비추천을 눌러 둔 상태에서 비추천 재클릭 (해제)
-        newDislikeCount = (review.dislikeCount - 1).clamp(0, double.infinity).toInt();
-        newUserVote = 0;
-      } else if (review.userVote == 1) {
-        // 추천이 선택된 상태에서 비추천 클릭 (전환)
-        newLikeCount = (review.likeCount - 1).clamp(0, double.infinity).toInt();
-        newDislikeCount = review.dislikeCount + 1;
-        newUserVote = -1;
-      }
-
-      // 리뷰 상태 업데이트
       _reviews[reviewIndex] = review.copyWith(
         likeCount: newLikeCount,
         dislikeCount: newDislikeCount,
         userVote: newUserVote,
       );
     });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('비추천은 서버에서 지원하지 않습니다.')),
+      );
+    }
   }
 
   // === 날짜 포맷팅 ===
@@ -803,6 +942,8 @@ class _ReviewsPageState extends State<ReviewsPage> {
     int selectedRating = 5; // 기본값 5점
     XFile? selectedImage; // 선택된 이미지 파일
     String? selectedRegion = _selectedRegion ?? '서울'; // 기본값은 현재 선택된 지역
+    final rootContext = context;
+    bool isSubmitting = false;
 
     showModalBottomSheet(
       context: context,
@@ -813,7 +954,7 @@ class _ReviewsPageState extends State<ReviewsPage> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setModalState) {
-            return Padding(
+            return SingleChildScrollView(
               padding: EdgeInsets.only(
                 bottom: MediaQuery.of(context).viewInsets.bottom,
                 left: 16,
@@ -983,61 +1124,82 @@ class _ReviewsPageState extends State<ReviewsPage> {
                   
                   // 등록 버튼
                   ElevatedButton(
-                    onPressed: () {
-                      // 입력값 검증
-                      if (placeNameController.text.trim().isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('장소명을 입력해주세요.'),
-                          ),
-                        );
-                        return;
-                      }
+                    onPressed: isSubmitting
+                        ? null
+                        : () async {
+                            final placeName = placeNameController.text.trim();
+                            final content = contentController.text.trim();
 
-                      if (contentController.text.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('리뷰 내용을 입력해주세요.'),
-                          ),
-                        );
-                        return;
-                      }
+                            if (placeName.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('장소명을 입력해주세요.'),
+                                ),
+                              );
+                              return;
+                            }
 
-                      // setState를 호출하여 리뷰 리스트에 새 리뷰 추가
-                      setState(() {
-                        _reviews.insert(
-                          0,
-                          Review(
-                            id: DateTime.now().millisecondsSinceEpoch.toString(),
-                            placeId: '${selectedRegion ?? '전체'}_${DateTime.now().millisecondsSinceEpoch}',
-                            placeName: placeNameController.text.trim(),
-                            region: selectedRegion ?? '전체',  // null-safe 처리
-                            rating: selectedRating,
-                            content: contentController.text,
-                            author: 'User${_reviews.length + 1}',
-                            createdAt: DateTime.now(),
-                            image: selectedImage,  // XFile? 타입이므로 null-safe
-                            likeCount: 0,
-                            dislikeCount: 0,
-                            userVote: 0,
-                          ),
-                        );
-                      });
+                            if (content.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('리뷰 내용을 입력해주세요.'),
+                                ),
+                              );
+                              return;
+                            }
 
-                      // 다이얼로그 닫기
-                      Navigator.pop(context);
+                            setModalState(() {
+                              isSubmitting = true;
+                            });
 
-                      // 성공 메시지
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('리뷰가 등록되었습니다.'),
-                        ),
-                      );
-                    },
+                            try {
+                              await ReviewApi.createReview(
+                                userId: _currentUserId,
+                                locationId: _defaultLocationId,
+                                rating: selectedRating,
+                                title: placeName,
+                                comment: content,
+                              );
+
+                              await _loadReviewsFromApi();
+
+                              if (!context.mounted) {
+                                return;
+                              }
+
+                              Navigator.pop(context);
+
+                              ScaffoldMessenger.of(rootContext).showSnackBar(
+                                const SnackBar(
+                                  content: Text('리뷰가 등록되었습니다.'),
+                                ),
+                              );
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('리뷰 등록 실패: $e'),
+                                  ),
+                                );
+                              }
+                            } finally {
+                              if (context.mounted) {
+                                setModalState(() {
+                                  isSubmitting = false;
+                                });
+                              }
+                            }
+                          },
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
-                    child: const Text('등록'),
+                    child: isSubmitting
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('등록'),
                   ),
                   const SizedBox(height: 16),
                 ],

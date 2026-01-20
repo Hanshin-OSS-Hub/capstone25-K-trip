@@ -887,8 +887,6 @@ class GridPainter extends CustomPainter {
         paint,
       );
     }
-  }
-
-  @override
+  }  @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
