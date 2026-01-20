@@ -376,34 +376,34 @@ class _ReviewsPageState extends State<ReviewsPage> {
           children: [
             _buildTopSection(),
 
-            // ⭐ 리뷰 API 연결 테스트 버튼 (임시)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: ElevatedButton(
-                onPressed: () async {
-                  await _loadReviewsFromApi();
-                },
-                child: const Text("리뷰 API 테스트"),
-              ),
-            ),
-
-            if (_isLoading)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24.0),
-                child: CircularProgressIndicator(),
-              )
-            else if (_loadError != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
-                child: Text(
-                  '리뷰를 불러오지 못했습니다.\n$_loadError',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.redAccent,
-                      ),
-                ),
-              )
-            else
+            // // ⭐ 리뷰 API 연결 테스트 버튼 (임시)
+            // Padding(
+            //   padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            //   child: ElevatedButton(
+            //     onPressed: () async {
+            //       await _loadReviewsFromApi();
+            //     },
+            //     child: const Text("리뷰 API 테스트"),
+            //   ),
+            // ),
+            //
+            // if (_isLoading)
+            //   const Padding(
+            //     padding: EdgeInsets.symmetric(vertical: 24.0),
+            //     child: CircularProgressIndicator(),
+            //   )
+            // else if (_loadError != null)
+            //   Padding(
+            //     padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+            //     child: Text(
+            //       '리뷰를 불러오지 못했습니다.\n$_loadError',
+            //       textAlign: TextAlign.center,
+            //       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            //             color: Colors.redAccent,
+            //           ),
+            //     ),
+            //   )
+            // else
               _buildReviewList(),
           ],
 
