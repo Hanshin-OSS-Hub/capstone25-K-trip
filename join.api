@@ -1,0 +1,219 @@
+from fastapi import HTTPException, Request
+from pydantic import BaseModel
+from typing import Optional, Literal
+from datetime import datetime, timedelta
+import os
+import jwt
+from jwt import PyJWKClient
+
+from google.oauth2 import id_token as google_id_token
+from google.auth.transport import requests as google_requests
+
+
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+APPLE_CLIENT_ID = os.getenv("APPLE_CLIENT_ID")
+
+APPLE_ISSUER = "https://appleid.apple.com"
+APPLE_JWKS_URL = "https://appleid.apple.com/auth/keys"
+
+
+class OAuthLoginRequest(BaseModel):
+    id_token: str
+
+
+def fetch_user_response_dict(cursor, user_id: int) -> dict:
+    cursor.execute(
+        """
+        SELECT id, email, name, nickname, avatar_url, is_guest,
+               email_verified_at, deleted_at, created_at, updated_at
+        FROM users
+        WHERE id = %s AND deleted_at IS NULL
+        """,
+        (user_id,),
+    )
+    user = cursor.fetchone()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+
+def get_or_create_user_for_oauth(
+    conn,
+    provider: Literal["google", "apple"],
+    provider_account_id: str,
+    email: Optional[str],
+):
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute(
+        """
+        SELECT user_id
+        FROM oauth_accounts
+        WHERE provider = %s AND provider_account_id = %s
+        """,
+        (provider, provider_account_id),
+    )
+    row = cursor.fetchone()
+    if row and row["user_id"]:
+        cursor.close()
+        return int(row["user_id"])
+
+    user_id = None
+    if email:
+        cursor.execute(
+            """
+            SELECT id
+            FROM users
+            WHERE email = %s AND deleted_at IS NULL
+            """,
+            (email,),
+        )
+        u = cursor.fetchone()
+        if u:
+            user_id = int(u["id"])
+
+    if user_id is None:
+        cursor.execute(
+            """
+            INSERT INTO users (email, password_hash, name, nickname, is_guest)
+            VALUES (%s, NULL, NULL, NULL, FALSE)
+            """,
+            (email,),
+        )
+        conn.commit()
+        user_id = cursor.lastrowid
+
+        cursor.execute(
+            "INSERT INTO user_settings (user_id) VALUES (%s)",
+            (user_id,),
+        )
+        conn.commit()
+
+    cursor.execute(
+        """
+        INSERT INTO oauth_accounts (user_id, provider, provider_account_id, email)
+        VALUES (%s, %s, %s, %s)
+        """,
+        (user_id, provider, provider_account_id, email),
+    )
+    conn.commit()
+
+    cursor.close()
+    return int(user_id)
+
+
+def create_session(conn, user_id: int, request: Request) -> tuple[str, datetime]:
+    session_token = generate_session_token()
+    expires_at = datetime.utcnow() + timedelta(days=7)
+
+    user_agent = request.headers.get("user-agent", None)
+    ip_str = request.client.host if request.client else None
+    ip_bin = ip_to_varbinary16(ip_str)
+
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO sessions (user_id, session_token, user_agent, ip_address, expires_at)
+        VALUES (%s, %s, %s, %s, %s)
+        """,
+        (user_id, session_token, user_agent, ip_bin, expires_at),
+    )
+    conn.commit()
+    cursor.close()
+
+    return session_token, expires_at
+
+
+def verify_google_id_token(id_token_str: str) -> dict:
+    if not GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=500, detail="GOOGLE_CLIENT_ID missing")
+
+    try:
+        idinfo = google_id_token.verify_oauth2_token(
+            id_token_str,
+            google_requests.Request(),
+            GOOGLE_CLIENT_ID,
+        )
+        iss = idinfo.get("iss")
+        if iss not in ["accounts.google.com", "https://accounts.google.com"]:
+            raise HTTPException(status_code=401, detail="Invalid Google issuer")
+        return idinfo
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid Google id_token")
+
+
+def verify_apple_id_token(id_token_str: str) -> dict:
+    if not APPLE_CLIENT_ID:
+        raise HTTPException(status_code=500, detail="APPLE_CLIENT_ID missing")
+
+    try:
+        jwk_client = PyJWKClient(APPLE_JWKS_URL)
+        signing_key = jwk_client.get_signing_key_from_jwt(id_token_str)
+
+        payload = jwt.decode(
+            id_token_str,
+            signing_key.key,
+            algorithms=["RS256"],
+            audience=APPLE_CLIENT_ID,
+            issuer=APPLE_ISSUER,
+            options={"require": ["exp", "iat", "iss", "aud", "sub"]},
+        )
+        return payload
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid Apple id_token")
+
+
+@app.post("/auth/google", response_model=LoginResponse)
+def auth_google(data: OAuthLoginRequest, request: Request):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        idinfo = verify_google_id_token(data.id_token)
+
+        user_id = get_or_create_user_for_oauth(
+            conn,
+            "google",
+            idinfo.get("sub"),
+            idinfo.get("email"),
+        )
+
+        session_token, expires_at = create_session(conn, user_id, request)
+        user_dict = fetch_user_response_dict(cursor, user_id)
+
+        return LoginResponse(
+            user=UserResponse(**user_dict),
+            session_token=session_token,
+            expires_at=expires_at,
+        )
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.post("/auth/apple", response_model=LoginResponse)
+def auth_apple(data: OAuthLoginRequest, request: Request):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        payload = verify_apple_id_token(data.id_token)
+
+        user_id = get_or_create_user_for_oauth(
+            conn,
+            "apple",
+            payload.get("sub"),
+            payload.get("email"),
+        )
+
+        session_token, expires_at = create_session(conn, user_id, request)
+        user_dict = fetch_user_response_dict(cursor, user_id)
+
+        return LoginResponse(
+            user=UserResponse(**user_dict),
+            session_token=session_token,
+            expires_at=expires_at,
+        )
+    finally:
+        cursor.close()
+        conn.close()
