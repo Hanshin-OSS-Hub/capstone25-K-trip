@@ -8,6 +8,9 @@ import 'screens/home_ai_schedule_page.dart';
 import 'screens/map_page.dart';
 import 'screens/reviews_page.dart';
 import 'screens/community_page.dart';
+import 'screens/login_page.dart';
+import 'screens/password_reset_page.dart';
+import 'screens/signup_page.dart';
 import 'widgets/category_menu_section.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -42,7 +45,14 @@ class MyApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: const MainScreen(),
+      // 앱 실행 시 로그인 화면을 먼저 표시
+      home: const LoginPage(),
+      // 임시 UI 단계 라우팅 설정
+      routes: {
+        '/main': (context) => const MainScreen(),
+        '/password-reset': (context) => const PasswordResetPage(),
+        '/signup': (context) => const SignupPage(),
+      },
     );
   }
 }
