@@ -1,13 +1,17 @@
 // 이 파일은 게시글 상세 페이지입니다.
-// CommunityPage에서 게시글을 탭했을 때 Navigator.push로 이동하는 페이지입니다.
-// 게시글의 전체 내용을 표시하고, 댓글 목록과 댓글 작성 기능을 제공합니다.
-// TODO: 추후 백엔드 API 연동 예정
+// 진입 시 GET /posts/{id}, GET /posts/{id}/comments로 데이터 로드, 댓글 등록은 POST /posts/{id}/comments 호출.
 
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'community_page.dart';
 
+const String _kBoardBaseUrl = 'http://10.0.2.2:8000';
+/// 댓글 작성 시 사용. 로그인 연동 전 테스트용(1 또는 5 등). 추후 로그인 연동 시 교체
+const int _kTempUserId = 1;
+
 class CommunityDetailPage extends StatefulWidget {
-  final Post post; // 게시글 객체 (직접 참조하여 댓글을 추가)
+  final Post post;
 
   const CommunityDetailPage({
     super.key,
@@ -19,8 +23,21 @@ class CommunityDetailPage extends StatefulWidget {
 }
 
 class _CommunityDetailPageState extends State<CommunityDetailPage> {
-  // 댓글 입력을 위한 TextEditingController
   final TextEditingController _commentController = TextEditingController();
+
+  late Post _post;
+  List<Comment> _comments = [];
+  bool _postLoaded = false;
+  bool _commentsLoaded = false;
+  bool _sendingComment = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _post = widget.post;
+    _loadPostDetail();
+    _loadComments();
+  }
 
   @override
   void dispose() {
@@ -28,30 +45,139 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
     super.dispose();
   }
 
-  // === 댓글 추가 ===
-  void _addComment() {
+  /// 게시글 상세 최신 내용 가져오기 (선택적 반영)
+  Future<void> _loadPostDetail() async {
+    try {
+      final res = await http.get(Uri.parse('$_kBoardBaseUrl/posts/${widget.post.id}'));
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        final map = jsonDecode(res.body) as Map;
+        final title = map['title'] as String? ?? _post.title;
+        final content = map['content'] as String? ?? _post.content;
+        final userId = map['user_id'] as int?;
+        DateTime createdAt = _post.createdAt;
+        try {
+          if (map['created_at'] != null) {
+            createdAt = DateTime.parse(map['created_at'].toString());
+          }
+        } catch (_) {}
+        setState(() {
+          _post = Post(
+            id: _post.id,
+            title: title,
+            content: content,
+            region: _post.region,
+            category: _post.category,
+            author: 'User${userId ?? _kTempUserId}',
+            createdAt: createdAt,
+            comments: _post.comments,
+          );
+          _postLoaded = true;
+        });
+      } else {
+        setState(() => _postLoaded = true);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _postLoaded = true);
+    }
+  }
+
+  /// 댓글 목록 가져오기 (replies 평탄화하여 리스트로 표시)
+  Future<void> _loadComments() async {
+    try {
+      final res = await http.get(Uri.parse('$_kBoardBaseUrl/posts/${widget.post.id}/comments'));
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map;
+        final list = (data['comments'] as List? ?? []) as List;
+        final flat = <Comment>[];
+        for (final c in list) {
+          final m = c as Map;
+          final userId = m['user_id'] as int?;
+          final content = m['content'] as String? ?? '';
+          final createdAt = m['created_at'];
+          DateTime dt = DateTime.now();
+          if (createdAt != null) {
+            try {
+              dt = DateTime.parse(createdAt.toString());
+            } catch (_) {}
+          }
+          flat.add(Comment(
+            author: 'User${userId ?? 0}',
+            content: content,
+            createdAt: dt,
+          ));
+          final replies = m['replies'] as List? ?? [];
+          for (final r in replies) {
+            final rm = r as Map;
+            final ru = rm['user_id'] as int?;
+            final rc = rm['content'] as String? ?? '';
+            final rca = rm['created_at'];
+            DateTime rdt = DateTime.now();
+            if (rca != null) {
+              try {
+                rdt = DateTime.parse(rca.toString());
+              } catch (_) {}
+            }
+            flat.add(Comment(
+              author: 'User${ru ?? 0}',
+              content: rc,
+              createdAt: rdt,
+            ));
+          }
+        }
+        setState(() {
+          _comments = flat;
+          _commentsLoaded = true;
+        });
+      } else {
+        setState(() => _commentsLoaded = true);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _commentsLoaded = true);
+    }
+  }
+
+  /// 댓글 등록 후 목록 다시 불러오기
+  Future<void> _addComment() async {
     final content = _commentController.text.trim();
-    
     if (content.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('댓글 내용을 입력해주세요.')),
       );
       return;
     }
-
-    // Post 객체의 comments 리스트에 직접 추가
-    setState(() {
-      widget.post.comments.add(
-        Comment(
-          author: '익명${widget.post.comments.length + 1}',
-          content: content,
-          createdAt: DateTime.now(),
-        ),
+    if (_sendingComment) return;
+    setState(() => _sendingComment = true);
+    try {
+      final body = jsonEncode({
+        'user_id': _kTempUserId,
+        'content': content,
+        'parent_comment_id': null,
+      });
+      final res = await http.post(
+        Uri.parse('$_kBoardBaseUrl/posts/${widget.post.id}/comments'),
+        headers: {'Content-Type': 'application/json'},
+        body: body,
       );
-    });
-
-    // 입력창 비우기
-    _commentController.clear();
+      if (!mounted) return;
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        _commentController.clear();
+        await _loadComments();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('댓글 등록 실패: ${res.statusCode}')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('댓글 등록 중 오류: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _sendingComment = false);
+    }
   }
 
   @override
@@ -83,7 +209,7 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                          widget.post.region,
+                          _post.region,
                           style: const TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
@@ -100,7 +226,7 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
                   
                   // 제목
                   Text(
-                    widget.post.title,
+                    _post.title,
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                           fontWeight: FontWeight.bold,
                         ),
@@ -114,7 +240,7 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
                   
                   // 본문
                   Text(
-                    widget.post.content,
+                    _post.content,
                     style: Theme.of(context).textTheme.bodyLarge,
                   ),
                   const SizedBox(height: 32),
@@ -129,7 +255,7 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        '댓글 ${widget.post.comments.length}개',
+                        '댓글 ${_comments.length}개',
                         style: Theme.of(context).textTheme.titleMedium?.copyWith(
                               fontWeight: FontWeight.bold,
                             ),
@@ -138,8 +264,13 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
                   ),
                   const SizedBox(height: 16),
                   
-                  // 댓글 목록
-                  if (widget.post.comments.isEmpty)
+                  // 댓글 목록 (API에서 불러온 _comments)
+                  if (!_commentsLoaded)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24.0),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else if (_comments.isEmpty)
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 24.0),
                       child: Center(
@@ -153,7 +284,7 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
                       ),
                     )
                   else
-                    ...widget.post.comments.map((comment) => _buildCommentItem(comment)),
+                    ..._comments.map((comment) => _buildCommentItem(comment)),
                   
                   const SizedBox(height: 16),
                 ],
@@ -184,7 +315,7 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
 
   // 카테고리 태그
   Widget _buildCategoryTag() {
-    Color categoryColor = _getCategoryColor(widget.post.category);
+    Color categoryColor = _getCategoryColor(_post.category);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -193,7 +324,7 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
         borderRadius: BorderRadius.circular(16),
       ),
       child: Text(
-        widget.post.category,
+        _post.category,
         style: const TextStyle(
           color: Colors.white,
           fontWeight: FontWeight.bold,
@@ -229,7 +360,7 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
         const Icon(Icons.person, size: 16, color: Colors.grey),
         const SizedBox(width: 4),
         Text(
-          widget.post.author,
+          _post.author,
           style: const TextStyle(
             fontWeight: FontWeight.w500,
           ),
@@ -238,7 +369,7 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
         const Icon(Icons.access_time, size: 16, color: Colors.grey),
         const SizedBox(width: 4),
         Text(
-          _formatDate(widget.post.createdAt),
+          _formatDate(_post.createdAt),
           style: const TextStyle(
             color: Colors.grey,
           ),
@@ -259,7 +390,7 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
             radius: 18,
             backgroundColor: Theme.of(context).colorScheme.primaryContainer,
             child: Text(
-              comment.author[0],
+              comment.author.isNotEmpty ? comment.author[0] : '?',
               style: TextStyle(
                 fontSize: 14,
                 color: Theme.of(context).colorScheme.primary,

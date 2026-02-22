@@ -1,14 +1,24 @@
 // 이 파일은 게시판(커뮤니티) 페이지입니다.
-// 게시글 목록을 표시하고, 필터/검색 기능을 제공합니다.
-// DB 없이 앱 실행 중 메모리에서만 데이터를 관리합니다.
-// TODO: 추후 백엔드 API 연동 예정
+// 게시글 목록을 API에서 불러와 표시하고, 필터/검색 시 서버 쿼리로 재요청합니다.
 
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'community_detail_page.dart';
 import 'community_write_page.dart';
 
+// 플랫폼별 API Base URL (Android 에뮬: 10.0.2.2, iOS 시뮬: 127.0.0.1)
+const String _kBoardBaseUrl = 'http://10.0.2.2:8000';
+
+/// API 응답이 비었거나 실패할 때 사용할 지역 목록(전체 제외) 및 이름→id 폴백 매핑
+const List<String> _kFallbackRegionNames = [
+  '서울', '경기', '강원', '충북', '충남', '전북', '전남', '경북', '경남',
+  '부산', '대구', '대전', '울산', '광주', '제주',
+];
+/// API 응답이 비었거나 실패할 때 사용할 카테고리 목록(전체 제외)
+const List<String> _kFallbackCategoryNames = ['날씨', '양도', '동행', '후기', 'Q&A'];
+
 // === 게시글 데이터 모델 ===
-// TODO: 추후 백엔드 API에서 받아온 데이터로 교체
 class Post {
   final int id;
   final String title;
@@ -17,7 +27,8 @@ class Post {
   final String category;   // 카테고리 (날씨, 양도, 동행, 후기, Q&A, 선택 안 함)
   final String author;      // 작성자
   final DateTime createdAt;
-  final List<Comment> comments; // 댓글 리스트
+  final List<Comment> comments; // 댓글 리스트 (목록에서는 비워두고 commentCount 사용)
+  final int? commentCount; // 서버에서 준 댓글 개수(목록 카드 표시용)
 
   Post({
     required this.id,
@@ -28,6 +39,7 @@ class Post {
     required this.author,
     required this.createdAt,
     List<Comment>? comments,
+    this.commentCount,
   }) : comments = comments ?? [];
 }
 
@@ -53,96 +65,18 @@ class CommunityPage extends StatefulWidget {
 }
 
 class _CommunityPageState extends State<CommunityPage> {
-  // TODO: 추후 실제 수집 지역과 연동
-  // 선택 가능한 지역 목록
-  static const List<String> _availableRegions = [
-    '전체',
-    '서울',
-    '부산',
-    '제주',
-  ];
+  // API에서 불러온 지역/카테고리 목록 (캐싱)
+  List<String> _availableRegions = ['전체'];
+  List<String> _filterCategories = ['전체'];
+  Map<int, String> _regionIdToName = {};
+  Map<int, String> _categoryIdToName = {};
+  Map<String, int> _regionNameToId = {};
+  Map<String, int> _categoryNameToId = {};
 
-  // 필터용 카테고리 목록 (작성 시에는 '선택 안 함'도 포함)
-  static const List<String> _filterCategories = [
-    '전체',
-    '날씨',
-    '양도',
-    '동행',
-    '후기',
-    'Q&A',
-  ];
-
-  // TODO: 추후 백엔드 API에서 게시글 리스트를 가져오도록 수정
-  // 게시글 리스트를 상태로 관리 (원본 데이터)
-  List<Post> _allPosts = [
-    Post(
-      id: 1,
-      title: '서울 여행 일정 추천 부탁드려요!',
-      content: '3일간 서울을 여행하려고 하는데 추천 일정이 있을까요? 경복궁, 명동, 한강 공원 정도를 가려고 하는데 시간 배분이 어렵네요.',
-      region: '서울',
-      category: 'Q&A',
-      author: 'Traveler123',
-      createdAt: DateTime.now().subtract(const Duration(days: 2)),
-      comments: [
-        Comment(
-          author: '익명1',
-          content: '경복궁은 오전에 가시는 걸 추천해요!',
-          createdAt: DateTime.now().subtract(const Duration(days: 1)),
-        ),
-        Comment(
-          author: '익명2',
-          content: '명동은 저녁에 가면 더 분위기 좋아요.',
-          createdAt: DateTime.now().subtract(const Duration(hours: 12)),
-        ),
-      ],
-    ),
-    Post(
-      id: 2,
-      title: '부산 해운대 후기',
-      content: '해운대 해수욕장이 정말 아름다웠습니다. 특히 일몰이 장관이었어요! 주변 맛집도 많아서 좋았습니다.',
-      region: '부산',
-      category: '후기',
-      author: 'BeachLover',
-      createdAt: DateTime.now().subtract(const Duration(days: 1)),
-      comments: [
-        Comment(
-          author: '익명1',
-          content: '저도 가봤는데 정말 좋았어요!',
-          createdAt: DateTime.now().subtract(const Duration(hours: 6)),
-        ),
-      ],
-    ),
-    Post(
-      id: 3,
-      title: '제주도 동행 구합니다',
-      content: '다음 주말에 제주도 여행 가실 분 있나요? 렌터카 함께 빌려서 비용 절감하고 싶어요.',
-      region: '제주',
-      category: '동행',
-      author: 'JejuExplorer',
-      createdAt: DateTime.now().subtract(const Duration(hours: 5)),
-      comments: [],
-    ),
-    Post(
-      id: 4,
-      title: '서울 날씨 정보 공유',
-      content: '오늘 서울 날씨가 정말 좋네요! 외출하기 딱 좋은 날씨입니다.',
-      region: '서울',
-      category: '날씨',
-      author: 'WeatherWatcher',
-      createdAt: DateTime.now().subtract(const Duration(hours: 3)),
-      comments: [],
-    ),
-    Post(
-      id: 5,
-      title: '부산 자갈치 시장 맛집 추천',
-      content: '자갈치 시장에서 먹은 회 정말 맛있었어요! 신선하고 가격도 합리적이었습니다.',
-      region: '부산',
-      category: '후기',
-      author: 'Foodie',
-      createdAt: DateTime.now().subtract(const Duration(hours: 2)),
-      comments: [],
-    ),
-  ];
+  // API에서 불러온 게시글 목록 (필터/검색은 서버 쿼리로 적용)
+  List<Post> _allPosts = [];
+  bool _isLoading = true;
+  String? _loadError;
 
   // 필터 상태
   String _selectedRegion = '전체';
@@ -150,36 +84,209 @@ class _CommunityPageState extends State<CommunityPage> {
   final TextEditingController _searchController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    _loadRegionsAndCategories();
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
   }
 
-  // 필터링된 게시글 리스트
-  List<Post> get _filteredPosts {
-    return _allPosts.where((post) {
-      // 지역 필터
-      if (_selectedRegion != '전체' && post.region != _selectedRegion) {
-        return false;
+  /// 지역·카테고리 목록을 API(GET /regions, GET /categories)에서 불러와 매핑 캐싱. 비었거나 실패 시 폴백 목록 사용.
+  Future<void> _loadRegionsAndCategories() async {
+    List<String> regionNames = ['전체'];
+    List<String> categoryNames = ['전체'];
+    final ridToName = <int, String>{};
+    final cidToName = <int, String>{};
+    final rnameToId = <String, int>{};
+    final cnameToId = <String, int>{};
+
+    try {
+      final resRegions = await http.get(Uri.parse('$_kBoardBaseUrl/regions'));
+      final resCategories = await http.get(Uri.parse('$_kBoardBaseUrl/categories'));
+      if (!mounted) return;
+
+      // API 응답이 200이고 body가 예상 구조일 때만 파싱
+      if (resRegions.statusCode == 200) {
+        try {
+          final data = jsonDecode(resRegions.body);
+          final regionList = (data is Map ? (data['regions'] as List?) : null) ?? [];
+          for (final r in regionList) {
+            final id = (r as Map)['region_id'] as int?;
+            final name = r['region_name'] as String? ?? '';
+            if (id != null && name.isNotEmpty) {
+              ridToName[id] = name;
+              rnameToId[name] = id;
+              regionNames.add(name);
+            }
+          }
+        } catch (_) {}
+      }
+      if (resCategories.statusCode == 200) {
+        try {
+          final data = jsonDecode(resCategories.body);
+          final categoryList = (data is Map ? (data['categories'] as List?) : null) ?? [];
+          for (final c in categoryList) {
+            final id = (c as Map)['category_id'] as int?;
+            final name = c['category_name'] as String? ?? '';
+            if (id != null && name.isNotEmpty) {
+              cidToName[id] = name;
+              cnameToId[name] = id;
+              categoryNames.add(name);
+            }
+          }
+        } catch (_) {}
       }
 
-      // 카테고리 필터
-      if (_selectedCategory != '전체' && post.category != _selectedCategory) {
-        return false;
+      // API에서 항목이 하나도 없으면 폴백 목록으로 채워 드롭다운이 항상 선택지 표시되도록 함
+      if (regionNames.length <= 1) {
+        for (var i = 0; i < _kFallbackRegionNames.length; i++) {
+          final name = _kFallbackRegionNames[i];
+          final id = i + 1;
+          ridToName[id] = name;
+          rnameToId[name] = id;
+          regionNames.add(name);
+        }
       }
-
-      // 검색어 필터
-      final searchKeyword = _searchController.text.trim().toLowerCase();
-      if (searchKeyword.isNotEmpty) {
-        final titleMatch = post.title.toLowerCase().contains(searchKeyword);
-        final contentMatch = post.content.toLowerCase().contains(searchKeyword);
-        if (!titleMatch && !contentMatch) {
-          return false;
+      if (categoryNames.length <= 1) {
+        for (var i = 0; i < _kFallbackCategoryNames.length; i++) {
+          final name = _kFallbackCategoryNames[i];
+          final id = i + 1;
+          cidToName[id] = name;
+          cnameToId[name] = id;
+          categoryNames.add(name);
         }
       }
 
-      return true;
-    }).toList();
+      if (mounted) {
+        setState(() {
+          _regionIdToName = ridToName;
+          _categoryIdToName = cidToName;
+          _regionNameToId = rnameToId;
+          _categoryNameToId = cnameToId;
+          _availableRegions = regionNames;
+          _filterCategories = categoryNames;
+        });
+        _loadPosts();
+      }
+    } catch (e) {
+      if (mounted) {
+        // 네트워크/파싱 오류 시에도 폴백으로 목록 채워서 화면은 사용 가능하게
+        final fallbackRegions = <String>['전체', ..._kFallbackRegionNames];
+        final fallbackCategories = <String>['전체', ..._kFallbackCategoryNames];
+        final rid = <int, String>{};
+        final cid = <int, String>{};
+        final rname = <String, int>{};
+        final cname = <String, int>{};
+        for (var i = 0; i < _kFallbackRegionNames.length; i++) {
+          final name = _kFallbackRegionNames[i];
+          final id = i + 1;
+          rid[id] = name;
+          rname[name] = id;
+        }
+        for (var i = 0; i < _kFallbackCategoryNames.length; i++) {
+          final name = _kFallbackCategoryNames[i];
+          final id = i + 1;
+          cid[id] = name;
+          cname[name] = id;
+        }
+        setState(() {
+          _regionIdToName = rid;
+          _categoryIdToName = cid;
+          _regionNameToId = rname;
+          _categoryNameToId = cname;
+          _availableRegions = fallbackRegions;
+          _filterCategories = fallbackCategories;
+          _loadError = null;
+        });
+        _loadPosts();
+      }
+    }
+  }
+
+  /// 게시글 목록을 서버 쿼리(필터/검색/정렬)로 요청
+  Future<void> _loadPosts() async {
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
+    try {
+      final query = <String, String>{
+        'page': '1',
+        'limit': '20',
+        'sort_by': 'latest',
+      };
+      if (_selectedRegion != '전체') {
+        final id = _regionNameToId[_selectedRegion];
+        if (id != null) query['region_id'] = id.toString();
+      }
+      if (_selectedCategory != '전체') {
+        final id = _categoryNameToId[_selectedCategory];
+        if (id != null) query['category_id'] = id.toString();
+      }
+      final search = _searchController.text.trim();
+      if (search.isNotEmpty) query['search'] = search;
+
+      final uri = Uri.parse('$_kBoardBaseUrl/posts').replace(queryParameters: query);
+      final res = await http.get(uri);
+      if (!mounted) return;
+      if (res.statusCode != 200) {
+        setState(() {
+          _allPosts = [];
+          _loadError = '게시글 목록을 불러오지 못했습니다.';
+          _isLoading = false;
+        });
+        return;
+      }
+      final data = jsonDecode(res.body) as Map;
+      final list = (data['posts'] as List? ?? []) as List;
+      final posts = <Post>[];
+      for (final p in list) {
+        final map = p as Map;
+        final postId = (map['post_id'] ?? map['id']) as int?;
+        if (postId == null) continue;
+        final title = (map['title'] as String?) ?? '';
+        final content = (map['content'] as String?) ?? '';
+        final userId = map['user_id'] as int?;
+        final regionId = map['region_id'] as int?;
+        final categoryId = map['category_id'] as int?;
+        final createdAt = map['created_at'];
+        DateTime dt = DateTime.now();
+        if (createdAt != null) {
+          try {
+            dt = DateTime.parse(createdAt.toString());
+          } catch (_) {}
+        }
+        final commentCount = map['comment_count'] as int?;
+        posts.add(Post(
+          id: postId,
+          title: title,
+          content: content,
+          region: regionId != null ? (_regionIdToName[regionId] ?? '미정') : '전체',
+          category: categoryId != null ? (_categoryIdToName[categoryId] ?? '미정') : '미정',
+          author: 'User${userId ?? 0}',
+          createdAt: dt,
+          comments: [],
+          commentCount: commentCount,
+        ));
+      }
+      setState(() {
+        _allPosts = posts;
+        _isLoading = false;
+        _loadError = null;
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _allPosts = [];
+          _loadError = '게시글 목록을 불러오지 못했습니다.';
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   @override
@@ -244,7 +351,7 @@ class _CommunityPageState extends State<CommunityPage> {
               const SizedBox(width: 8),
               Expanded(
                 child: DropdownButton<String>(
-                  value: _selectedRegion,
+                  value: _availableRegions.contains(_selectedRegion) ? _selectedRegion : '전체',
                   isExpanded: true,
                   items: _availableRegions.map((region) {
                     return DropdownMenuItem<String>(
@@ -257,6 +364,7 @@ class _CommunityPageState extends State<CommunityPage> {
                       setState(() {
                         _selectedRegion = value;
                       });
+                      _loadPosts(); // 필터 변경 시 서버에 다시 요청
                     }
                   },
                 ),
@@ -277,7 +385,7 @@ class _CommunityPageState extends State<CommunityPage> {
               const SizedBox(width: 8),
               Expanded(
                 child: DropdownButton<String>(
-                  value: _selectedCategory,
+                  value: _filterCategories.contains(_selectedCategory) ? _selectedCategory : '전체',
                   isExpanded: true,
                   items: _filterCategories.map((category) {
                     return DropdownMenuItem<String>(
@@ -290,6 +398,7 @@ class _CommunityPageState extends State<CommunityPage> {
                       setState(() {
                         _selectedCategory = value;
                       });
+                      _loadPosts(); // 필터 변경 시 서버에 다시 요청
                     }
                   },
                 ),
@@ -298,44 +407,75 @@ class _CommunityPageState extends State<CommunityPage> {
           ),
           const SizedBox(height: 12),
           
-          // 검색창
-          TextField(
-            controller: _searchController,
-            decoration: InputDecoration(
-              hintText: '제목 또는 내용 검색',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: _searchController.text.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear),
-                      onPressed: () {
-                        setState(() {
-                          _searchController.clear();
-                        });
-                      },
-                    )
-                  : null,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
+          // 검색창 (검색 시 서버 쿼리로 요청)
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: '제목 또는 내용 검색',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              setState(() {
+                                _searchController.clear();
+                              });
+                              _loadPosts();
+                            },
+                          )
+                        : null,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                  ),
+                  onSubmitted: (_) => _loadPosts(),
+                ),
               ),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 12,
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: _loadPosts,
+                icon: const Icon(Icons.search),
+                tooltip: '검색',
               ),
-            ),
-            onChanged: (value) {
-              setState(() {});
-            },
+            ],
           ),
         ],
       ),
     );
   }
 
-  // === 게시글 목록 ===
+  // === 게시글 목록 (API 결과 그대로 표시, 로딩/에러 처리) ===
   Widget _buildPostList() {
-    final filteredPosts = _filteredPosts;
-
-    if (filteredPosts.isEmpty) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_loadError != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              _loadError!,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            TextButton(
+              onPressed: _loadPosts,
+              child: const Text('다시 시도'),
+            ),
+          ],
+        ),
+      );
+    }
+    if (_allPosts.isEmpty) {
       return Center(
         child: Text(
           '게시글이 없습니다.\n첫 게시글을 작성해보세요!',
@@ -349,16 +489,16 @@ class _CommunityPageState extends State<CommunityPage> {
 
     return ListView.builder(
       padding: const EdgeInsets.all(16.0),
-      itemCount: filteredPosts.length,
+      itemCount: _allPosts.length,
       itemBuilder: (context, index) {
-        return _buildPostCard(filteredPosts[index]);
+        return _buildPostCard(_allPosts[index]);
       },
     );
   }
 
   // === 게시글 카드 ===
   Widget _buildPostCard(Post post) {
-    final commentCount = post.comments.length;
+    final commentCount = post.commentCount ?? post.comments.length;
     
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
