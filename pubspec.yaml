@@ -1,0 +1,42 @@
+name: ktrip_project
+description: "A new Flutter project."
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  flutter_localizations:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  #날짜 포맷팅을 위한 패키지
+  intl: ^0.20.2
+  
+  # 갤러리에서 이미지 선택을 위한 패키지
+  image_picker: ^1.0.7
+
+  # 🔥 API 통신용 (추가)
+  http: ^1.2.2
+
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+flutter:
+
+  uses-material-design: true
+
+  assets:
+    - assets/images/koreamap.png  #한국 지도 이미지 에셋 경로
+
