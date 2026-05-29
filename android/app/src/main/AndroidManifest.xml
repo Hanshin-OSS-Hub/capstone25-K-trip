@@ -6,12 +6,17 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <!-- Android 12 이하에서 갤러리 이미지 읽기 -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <application
         android:label="ktrip_project"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="AIzaSyA3gS6mMhqQUAo_eubLOjmgxGYjYp8Tc3w" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

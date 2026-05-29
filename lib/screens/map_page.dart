@@ -2,8 +2,9 @@
 // 현재 위치 기반 주변 관광지 추천 UI를 제공합니다.
 // TODO: 추후 실제 GPS 위치, 지도 SDK(Google Maps 등), 백엔드 연동 예정
 // 현재는 더미 데이터와 placeholder UI만 사용합니다.
-
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 // === 주변 관광지 데이터 모델 ===
 // TODO: 추후 백엔드 API에서 받아온 데이터로 교체
@@ -14,6 +15,7 @@ class NearbyPlace {
   final double distanceKm;  // 현재 위치로부터 거리 (km 단위, 더미 수치)
   final double rating;      // 평점 (예: 4.7)
   final String shortDesc;   // 간단 설명
+  final LatLng position;
 
   NearbyPlace({
     required this.city,
@@ -22,6 +24,7 @@ class NearbyPlace {
     required this.distanceKm,
     required this.rating,
     required this.shortDesc,
+    required this.position,
   });
 }
 
@@ -47,6 +50,7 @@ class _MapPageState extends State<MapPage> {
       distanceKm: 0.8,
       rating: 4.7,
       shortDesc: '조선 왕조의 대표적인 궁궐로 한국의 역사를 느낄 수 있는 곳',
+      position: LatLng(37.5796, 126.9770),
     ),
     NearbyPlace(
       city: '서울',
@@ -55,6 +59,7 @@ class _MapPageState extends State<MapPage> {
       distanceKm: 1.2,
       rating: 4.5,
       shortDesc: '서울의 대표적인 쇼핑 거리와 맛집이 모여있는 번화가',
+      position: LatLng(37.5636, 126.9827),
     ),
     NearbyPlace(
       city: '서울',
@@ -63,6 +68,7 @@ class _MapPageState extends State<MapPage> {
       distanceKm: 2.5,
       rating: 4.6,
       shortDesc: '서울의 랜드마크로 야경이 아름다운 전망대',
+      position: LatLng(37.5512, 126.9882),
     ),
     NearbyPlace(
       city: '서울',
@@ -71,6 +77,7 @@ class _MapPageState extends State<MapPage> {
       distanceKm: 1.0,
       rating: 4.8,
       shortDesc: '전통 한옥이 잘 보존된 아름다운 마을',
+      position: LatLng(37.5826, 126.9830),
     ),
     NearbyPlace(
       city: '서울',
@@ -79,6 +86,7 @@ class _MapPageState extends State<MapPage> {
       distanceKm: 0.9,
       rating: 4.4,
       shortDesc: '전통 문화와 현대가 공존하는 거리',
+      position: LatLng(37.5740, 126.9856),
     ),
     NearbyPlace(
       city: '서울',
@@ -87,6 +95,7 @@ class _MapPageState extends State<MapPage> {
       distanceKm: 3.2,
       rating: 4.9,
       shortDesc: '도심 속에서 자연을 즐길 수 있는 휴식 공간',
+      position: LatLng(37.5207, 126.9396),
     ),
     NearbyPlace(
       city: '서울',
@@ -95,6 +104,7 @@ class _MapPageState extends State<MapPage> {
       distanceKm: 0.5,
       rating: 4.6,
       shortDesc: '조선 시대 궁궐로 석조전이 유명한 곳',
+      position: LatLng(37.5658, 126.9752),
     ),
     NearbyPlace(
       city: '서울',
@@ -103,6 +113,7 @@ class _MapPageState extends State<MapPage> {
       distanceKm: 2.8,
       rating: 4.5,
       shortDesc: '현대적 건축물로 유명한 문화 공간',
+      position: LatLng(37.5665, 127.0092),
     ),
   ];
 
@@ -162,43 +173,42 @@ class _MapPageState extends State<MapPage> {
   // === 지도 영역 Placeholder ===
   // TODO: 추후 실제 지도 SDK(google_maps_flutter 등) 연동 시 이 부분을 GoogleMap 위젯으로 교체
   Widget _buildMapPlaceholder() {
-    return Container(
-      height: 200,
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
-          width: 1,
+    if (kIsWeb) {
+      return Container(
+        height: 250,
+        width: double.infinity,
+        child: const Center(
+          child: Text(
+            '웹에서는 Google Map이 지원되지 않습니다.\n안드로이드에서 확인하세요.',
+            textAlign: TextAlign.center,
+          ),
         ),
-      ),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.map,
-              size: 48,
-              color: Theme.of(context).colorScheme.primary.withOpacity(0.6),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              '여기는 나중에 실제 지도가 들어갈 영역입니다',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.grey[600],
-                  ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '(추후 실제 지도 연동 예정)',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Colors.grey[500],
-                    fontStyle: FontStyle.italic,
-                  ),
-            ),
-          ],
+      );
+    }
+    final markers = mockNearbyPlaces.map((place) {
+      return Marker(
+        markerId: MarkerId(place.name),
+        position: place.position,
+        infoWindow: InfoWindow(
+          title: place.name,
+          snippet: place.category,
+        ),
+      );
+    }).toSet();
+
+    return SizedBox(
+      height: 250,
+      width: double.infinity,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: GoogleMap(
+          initialCameraPosition: const CameraPosition(
+            target: LatLng(37.5665, 126.9780),
+            zoom: 13,
+          ),
+          markers: markers,
+          zoomControlsEnabled: true,
+          myLocationButtonEnabled: false,
         ),
       ),
     );
