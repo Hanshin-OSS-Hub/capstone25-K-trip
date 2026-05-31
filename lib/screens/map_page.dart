@@ -2,7 +2,6 @@
 // 현재 위치 기반 주변 관광지 추천 UI를 제공합니다.
 // TODO: 추후 실제 GPS 위치, 지도 SDK(Google Maps 등), 백엔드 연동 예정
 // 현재는 더미 데이터와 placeholder UI만 사용합니다.
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
@@ -173,18 +172,7 @@ class _MapPageState extends State<MapPage> {
   // === 지도 영역 Placeholder ===
   // TODO: 추후 실제 지도 SDK(google_maps_flutter 등) 연동 시 이 부분을 GoogleMap 위젯으로 교체
   Widget _buildMapPlaceholder() {
-    if (kIsWeb) {
-      return Container(
-        height: 250,
-        width: double.infinity,
-        child: const Center(
-          child: Text(
-            '웹에서는 Google Map이 지원되지 않습니다.\n안드로이드에서 확인하세요.',
-            textAlign: TextAlign.center,
-          ),
-        ),
-      );
-    }
+
     final markers = mockNearbyPlaces.map((place) {
       return Marker(
         markerId: MarkerId(place.name),

@@ -15,7 +15,7 @@
         android:icon="@mipmap/ic_launcher">
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyA3gS6mMhqQUAo_eubLOjmgxGYjYp8Tc3w" />
+            android:value="여기에 키를 입력해주세요." />
 
         <activity
             android:name=".MainActivity"
